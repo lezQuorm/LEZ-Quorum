@@ -11,7 +11,7 @@
 //! Member secrets are **witness inputs only** — they never appear in the
 //! journal. The journal publishes the nullifiers (for on-chain double-vote
 //! prevention) and the action summary (which the gate executes). This is the
-//! exact ProofGate pattern: verify in the guest, gate on-chain.
+//! exact `ProofGate` pattern: verify in the guest, gate on-chain.
 
 use quorum_core::merkle::{leaf_hash, node_hash};
 use quorum_core::nullifier::{derive_nullifier, member_commitment};
@@ -161,6 +161,10 @@ impl std::error::Error for CircuitError {}
 /// - [`CircuitError::DuplicateNullifier`] if a member approved twice.
 /// - [`CircuitError::AmountExceedsCap`] / [`CircuitError::NoopRotation`] /
 ///   [`CircuitError::InvalidThresholdChange`] for invalid actions.
+///
+/// # Panics
+/// Never in practice: `approval_count` is `MAX_APPROVALS`-capped and always
+/// fits in a `u8`.
 #[must_use = "the circuit result must be checked"]
 pub fn evaluate(witness: &ThresholdWitness) -> Result<ThresholdJournal, CircuitError> {
     if witness.required_threshold == 0 {
@@ -226,7 +230,8 @@ pub fn evaluate(witness: &ThresholdWitness) -> Result<ThresholdJournal, CircuitE
         proposal_id: witness.proposal_id,
         constitution_version: witness.constitution_version,
         required_threshold: witness.required_threshold,
-        approval_count: witness.approvals.len() as u8,
+        approval_count: u8::try_from(witness.approvals.len())
+            .expect("approval count fits in u8: capped by MAX_APPROVALS"),
         nullifiers,
         action: witness.action.clone(),
     })
