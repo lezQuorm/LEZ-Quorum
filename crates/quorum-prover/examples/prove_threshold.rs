@@ -1,4 +1,4 @@
-//! Generates a real (RISC0_DEV_MODE=0) 2-of-3 threshold proof and prints
+//! Generates a real (`RISC0_DEV_MODE=0`) 2-of-3 threshold proof and prints
 //! timing, receipt size, and the pinned image ID.
 //!
 //! ```bash
@@ -61,11 +61,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Print the image ID as a rust array so it can be pasted into
     // crates/quorum-image-id/src/lib.rs.
-    let words: Vec<String> = threshold_image_id().iter().map(|w| w.to_string()).collect();
+    let words: Vec<String> = threshold_image_id().iter().map(u32::to_string).collect();
     println!("image_id rust: [{}]", words.join(", "));
     Ok(())
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .fold(String::new(), |mut s, h| {
+            s.push_str(&h);
+            s
+        })
 }
