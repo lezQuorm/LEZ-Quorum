@@ -1,0 +1,24 @@
+[package]
+name = "quorum-prover"
+description = "Host-side Risc0 prover and verifier for Quorum threshold proofs (LP-0002)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+quorum-core = { path = "../quorum-core" }
+quorum-circuit = { path = "../quorum-circuit" }
+quorum-threshold-methods = { path = "../../guests/quorum-threshold" }
+risc0-zkvm.workspace = true
+base64.workspace = true
+bincode.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,11 @@
+[package]
+name = "quorum-image-id"
+description = "Pinned Risc0 image ID of the Quorum threshold guest (LP-0002)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
