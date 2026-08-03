@@ -1,6 +1,6 @@
 //! Host-side proving and verification for Quorum threshold proofs.
 //!
-//! Mirrors the proven ProofGate prover: strict `RISC0_DEV_MODE` handling,
+//! Mirrors the proven `ProofGate` prover: strict `RISC0_DEV_MODE` handling,
 //! host-side statement evaluation first, succinct proofs via the default
 //! prover, receipt verification against the pinned image ID, and bincode
 //! serialization for transport.
@@ -24,7 +24,7 @@ pub struct QuorumProof {
     pub receipt: Vec<u8>,
 }
 
-/// RISC0_DEV_MODE state.
+/// `RISC0_DEV_MODE` state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DevModeStatus {
     /// Real proving (`0`/unset).
@@ -58,6 +58,9 @@ pub enum ProverError {
 }
 
 /// Reads and validates `RISC0_DEV_MODE`.
+///
+/// # Errors
+/// [`ProverError::InvalidDevMode`] for unsupported values.
 pub fn dev_mode_status() -> Result<DevModeStatus, ProverError> {
     match env::var("RISC0_DEV_MODE") {
         Err(env::VarError::NotPresent) => parse_dev_mode(None),
@@ -80,6 +83,10 @@ fn parse_dev_mode(value: Option<&str>) -> Result<DevModeStatus, ProverError> {
 }
 
 /// Fails if dev mode is enabled — evidence must be real proofs.
+///
+/// # Errors
+/// - [`ProverError::InvalidDevMode`] for unsupported `RISC0_DEV_MODE` values.
+/// - [`ProverError::DevModeEnabled`] when dev mode is active.
 pub fn ensure_real_proving_mode() -> Result<(), ProverError> {
     match dev_mode_status()? {
         DevModeStatus::Disabled => Ok(()),
@@ -88,6 +95,10 @@ pub fn ensure_real_proving_mode() -> Result<(), ProverError> {
 }
 
 /// Generates a real (succinct) threshold proof.
+///
+/// # Errors
+/// Any [`ProverError`] variant, including witness rejection, dev-mode being
+/// enabled, proving/verification failures, or journal mismatch.
 pub fn prove(witness: &ThresholdWitness) -> Result<QuorumProof, ProverError> {
     ensure_real_proving_mode()?;
     let expected_journal = evaluate(witness)?;
@@ -120,6 +131,9 @@ pub fn prove(witness: &ThresholdWitness) -> Result<QuorumProof, ProverError> {
 }
 
 /// Verifies a stored proof and returns its journal.
+///
+/// # Errors
+/// Any [`ProverError`] variant: receipt decode/verify failure or journal mismatch.
 pub fn verify_receipt(proof: &QuorumProof) -> Result<ThresholdJournal, ProverError> {
     let receipt = decode_receipt(&proof.receipt)?;
     receipt
@@ -136,6 +150,9 @@ pub fn verify_receipt(proof: &QuorumProof) -> Result<ThresholdJournal, ProverErr
 }
 
 /// Decodes a bincode-serialized receipt.
+///
+/// # Errors
+/// [`ProverError::ReceiptDecode`] if the bytes are not a valid receipt.
 pub fn decode_receipt(bytes: &[u8]) -> Result<Receipt, ProverError> {
     bincode::deserialize(bytes).map_err(|error| ProverError::ReceiptDecode(error.to_string()))
 }
