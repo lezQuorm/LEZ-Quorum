@@ -1,0 +1,17 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Local tooling / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Keys & secrets (never commit)
+*.pem
+*.key
+.secrets/
+
+# Testnet evidence scratch
+/evidence/tmp/

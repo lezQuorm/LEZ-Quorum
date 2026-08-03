@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/conclave-core",
+    # Chunk 1: "crates/lez-compat",
+    # Chunk 3: "crates/conclave-circuit",
+    # Chunk 3: "crates/conclave-image-id",
+    # Chunk 5: "crates/conclave-sdk",
+    # Chunk 5: "crates/conclave-cli",
+    # Chunk 4: "programs/conclave-gate",
+]
+default-members = ["crates/conclave-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/FidelCoder/Conclave"
+rust-version = "1.91"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
