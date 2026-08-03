@@ -36,6 +36,7 @@
 
 pub mod constitution;
 pub mod error;
+pub mod merkle;
 pub mod nullifier;
 pub mod proposal;
 

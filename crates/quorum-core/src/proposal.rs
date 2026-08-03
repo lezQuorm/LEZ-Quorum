@@ -196,19 +196,10 @@ impl Proposal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{nullifier::member_commitment, Constitution, DOMAIN_TAG};
-    use sha2::Digest;
+    use crate::Constitution;
 
     fn root(secrets: &[[u8; 32]]) -> Commitment {
-        let mut leaves: Vec<Commitment> = secrets.iter().map(member_commitment).collect();
-        leaves.sort_unstable();
-        let mut h = sha2::Sha256::new();
-        h.update(DOMAIN_TAG);
-        h.update(b"/test-root");
-        for l in &leaves {
-            h.update(l);
-        }
-        h.finalize().into()
+        crate::merkle::member_root(secrets)
     }
 
     fn two_of_three() -> Constitution {

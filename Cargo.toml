@@ -2,14 +2,14 @@
 resolver = "2"
 members = [
     "crates/quorum-core",
-    # Chunk 1: "crates/lez-compat",
+    "crates/lez-compat",
     # Chunk 3: "crates/quorum-circuit",
     # Chunk 3: "crates/quorum-image-id",
     # Chunk 5: "crates/quorum-sdk",
     # Chunk 5: "crates/quorum-cli",
     # Chunk 4: "programs/quorum-gate",
 ]
-default-members = ["crates/quorum-core"]
+default-members = ["crates/quorum-core", "crates/lez-compat"]
 
 [workspace.package]
 version = "0.1.0"

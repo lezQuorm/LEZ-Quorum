@@ -196,22 +196,9 @@ pub fn demo_tier_ops() -> SpendingTier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nullifier::member_commitment;
-    use crate::DOMAIN_TAG;
-    use sha2::Digest;
 
     fn root(secrets: &[[u8; 32]]) -> Commitment {
-        // Chunk 2 wires the real Merkle tree; for core tests, a domain-separated
-        // commitment over the sorted leaf commitments suffices.
-        let mut leaves: Vec<Commitment> = secrets.iter().map(member_commitment).collect();
-        leaves.sort_unstable();
-        let mut h = sha2::Sha256::new();
-        h.update(DOMAIN_TAG);
-        h.update(b"/test-root");
-        for l in &leaves {
-            h.update(l);
-        }
-        h.finalize().into()
+        crate::merkle::member_root(secrets)
     }
 
     #[allow(clippy::cast_possible_truncation)] // test helper: n < 256 always

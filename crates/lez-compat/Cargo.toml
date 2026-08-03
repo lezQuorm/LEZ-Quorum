@@ -1,0 +1,15 @@
+[package]
+name = "lez-compat"
+description = "LEZ v0.3 compatibility: shielded-account commitments, Merkle membership, validation rules (LP-0002)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true
