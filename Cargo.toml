@@ -6,13 +6,15 @@ members = [
     "crates/quorum-circuit",
     "crates/quorum-prover",
     "crates/quorum-image-id",
+    "crates/quorum-gate-core",
     "guests/quorum-threshold",
-    # Chunk 5: "crates/quorum-sdk",
-    # Chunk 5: "crates/quorum-cli",
-    # Chunk 4: "programs/quorum-gate",
+    "programs/quorum-gate",
+    "crates/quorum-sdk",
+    "crates/quorum-cli",
 ]
 exclude = [
     "guests/quorum-threshold/guest",
+    "programs/quorum-gate/guest",
 ]
 default-members = [
     "crates/quorum-core",

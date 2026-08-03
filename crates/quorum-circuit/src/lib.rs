@@ -24,7 +24,16 @@ pub type Digest32 = [u8; 32];
 pub const MAX_APPROVALS: usize = 10;
 
 /// The proposed action (public by design — LP-0002 hides identity/vote, not content).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    borsh::BorshSerialize,
+    borsh::BorshDeserialize,
+)]
 pub enum ActionData {
     /// A treasury transfer under a spending tier.
     Transfer {
