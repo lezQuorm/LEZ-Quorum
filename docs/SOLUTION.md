@@ -87,7 +87,9 @@ See [`criteria-checklist.md`](../criteria-checklist.md) for the full 1:1 map to
 - [x] Proof generation runs client-side on a standard laptop
   (see [`docs/BENCHMARKS.md`](BENCHMARKS.md)).
 - [x] Reference integration: threshold-gated treasury transfer + rotation via
-  the CLI/SDK ([`scripts/demo.sh`](../scripts/demo.sh)).
+  the CLI/SDK, verified end-to-end locally
+  ([`scripts/demo.sh`](../scripts/demo.sh)); on-chain testnet deploy pending a
+  funded wallet (`docs/KNOWN_LIMITATIONS.md` #2).
 - [x] Reproducible end-to-end flow with evidence
   ([`scripts/regenerate-evidence.sh`](../scripts/regenerate-evidence.sh)).
 - [x] Full documentation + clean public repository (CI green, clippy clean
@@ -143,7 +145,8 @@ evidence are part of the repository.
   receipt size ~219 KiB).
 - End-to-end demo verified: create → propose → approve ×2 → execute →
   rotate member → constitution v2 → execute.
-- No mock proofs or placeholder artifacts in the evidence path.
+- No mock proofs or placeholder artifacts in the **real-proof** evidence path
+  (the fast local demo uses dev-mode proofs by design and says so).
 
 | Measurement | Result |
 | --- | ---: |

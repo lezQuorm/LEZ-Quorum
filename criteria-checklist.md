@@ -9,16 +9,16 @@ Legend: 🔲 planned · 🟡 in progress (blocked on operator-side step) · ✅ 
 - [x] **F1** Any M-of-N member holding a shielded LEZ account can submit an approval without revealing identity to on-chain observers or other members.
       → ZK threshold proof; member root commitment, never plaintext. (`quorum-circuit` + `quorum-prover`, Chunk 2–3)
 - [x] **F2** On-chain verifier confirms a threshold of M approvals without recording which members approved.
-      → `quorum-gate` (SPEL) verifies the receipt; only the nullifier set is recorded on-chain. (Chunk 3–4)
+      → `quorum-gate` (SPEL) verifies the receipt; only the nullifier set is recorded on-chain. Logic fully implemented + tested offline (`quorum-gate-core` 5/5); on-chain verification pending testnet deploy (same operator step as F6/F7).
 - [x] **F3** Double-vote prevention via nullifiers or equivalent.
       → `nullifier = H(member_secret, proposal_id, version)`; program rejects duplicates (error 1005). (Chunk 2)
 - [x] **F4** Completed execution unlinkable to any individual member's shielded account.
       → single aggregated proof; no per-member on-chain artifact. (Chunk 3)
 - [x] **F5** Proof generation runs client-side on a standard laptop.
       → benchmark table in `docs/BENCHMARKS.md` (real proof ~368 s, ~219 KiB receipt). (Chunk 3)
-- [x] **F6** Reference integration: threshold-gated action (treasury transfer) on LEZ testnet using shielded member accounts.
-      → full flow implemented + verified locally (`scripts/demo.sh`, CLI+SDK); testnet deploy needs a funded wallet (`docs/KNOWN_LIMITATIONS.md` #2).
-- [x] **F7** ≥1 multisig instance on testnet, proposal submitted/approved/executed, reproducible + evidence.
+- [ ] **F6** Reference integration: threshold-gated action (treasury transfer) on LEZ testnet using shielded member accounts. 🟡
+      → full flow implemented + verified **locally** (`scripts/demo.sh`, CLI+SDK); testnet deployment pending a funded wallet (`docs/KNOWN_LIMITATIONS.md` #2).
+- [ ] **F7** ≥1 multisig instance on testnet, proposal submitted/approved/executed, reproducible + evidence. 🟡
       → local multisig instance demonstrated end-to-end incl. rotation; on-chain artifacts pinned by `scripts/regenerate-evidence.sh` once testnet deploy runs.
 - [x] **F8** Full documentation + clean public repository.
       → README, ARCHITECTURE, PRIVACY_MODEL, CIRCUIT_DESIGN, ERROR_CODES, BENCHMARKS, SOLUTION, ADRs, SECURITY_ASSUMPTIONS, KNOWN_LIMITATIONS. CI green locally.
@@ -41,11 +41,11 @@ Legend: 🔲 planned · 🟡 in progress (blocked on operator-side step) · ✅ 
 
 ## Supportability
 
-- [x] **S1** Program deployed + tested on LEZ devnet/testnet. 🟡 → SPEL program compiles + IDL generated; deployment transaction needs a funded wallet (operator-side).
+- [ ] **S1** Program deployed + tested on LEZ devnet/testnet. 🟡 → SPEL program compiles + IDL generated; deployment transaction needs a funded wallet (operator-side).
 - [x] **S2** End-to-end integration tests run against a LEZ sequencer (standalone mode), included in CI → CI workflow has `check` (fmt/clippy/tests) + `real-proof` jobs; standalone-sequencer job gated on wallet availability.
-- [x] **S3** CI green on default branch → workflow in `.github/workflows/ci.yml`, strict (`-D warnings`); hosted runs blocked by the GitHub account billing lock (same as LP-0005) until operator unlocks.
+- [ ] **S3** CI green on default branch. 🟡 → workflow in `.github/workflows/ci.yml`, strict (`-D warnings`), **passes locally**; hosted runs blocked by the GitHub account billing lock (same as LP-0005) until operator unlocks.
 - [x] **S4** README: deployment steps, program addresses, CLI + Basecamp instructions. (Chunk 8)
-- [x] **S5** Reproducible e2e demo script works against a real local sequencer with `RISC0_DEV_MODE=0` → `scripts/regenerate-evidence.sh` runs fmt+clippy+tests+real proof+demo; `RISC0_DEV_MODE=1` demo verified, real-proof job verified in CI.
+- [ ] **S5** Reproducible e2e demo script works against a real local sequencer with `RISC0_DEV_MODE=0`. 🟡 → `scripts/regenerate-evidence.sh` runs fmt+clippy+tests+real proof+demo; `RISC0_DEV_MODE=1` demo verified, real-proof example verified locally; on-chain/sequencer evidence pending deploy.
 - [ ] **S6** Recorded narrated video demo showing terminal output incl. proof generation (`RISC0_DEV_MODE=0`). (Chunk 9 — operator records)
 
 ## Submission requirements (write-up must cover)

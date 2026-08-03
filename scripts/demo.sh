@@ -15,7 +15,7 @@ mkdir -p "$DEMO_DIR"
 cd "$DEMO_DIR"
 
 echo "== building CLI =="
-cargo build -q -p quorum-cli --manifest-path "$OLDPWD/Cargo.toml" 2>/dev/null || true
+cargo build -q -p quorum-cli --manifest-path "$OLDPWD/Cargo.toml"
 Q="$OLDPWD/target/debug/quorum"
 
 RECIPIENT="0909090909090909090909090909090909090909090909090909090909090909"
@@ -35,7 +35,7 @@ echo "== 4. member 1 approves -> threshold reached =="
 echo "== 5. execute =="
 "$Q" execute --proposal 0
 
-echo "== 6. rotate member 2 -> newcomer (Idea 02) =="
+echo "== 6. rotate the member set (Idea 02: new root, nothing else) =="
 NEW_ROOT="$("$Q" new-root --members 3)"
 echo "   new member root: $NEW_ROOT"
 "$Q" propose --action rotate --new-member-root "$NEW_ROOT" --new-member-count 3
@@ -49,3 +49,6 @@ echo "== 7. final state =="
 echo
 echo "demo artifacts: $(ls claims/ | tr '\n' ' ')"
 echo "NOTE: RISC0_DEV_MODE=$RISC0_DEV_MODE — set 0 for real proofs."
+# (A full member-set rotation is shown here; the single-member-swap case with a
+#  removed key provably dead is covered by the rotation_flow_updates_constitution
+#  SDK test.)

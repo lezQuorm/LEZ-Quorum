@@ -19,4 +19,5 @@ echo "== 3. end-to-end demo =="
 RISC0_DEV_MODE=1 ./scripts/demo.sh
 
 echo
-echo "✅ evidence regenerated — re-pin hashes in docs/evidence/LIVE_TESTNET.md"
+echo "✅ local evidence regenerated (fmt + clippy + tests + real proof + demo)."
+echo "   After a testnet deploy, re-pin hashes in docs/evidence/LIVE_TESTNET.md (created post-deploy)."
