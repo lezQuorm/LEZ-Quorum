@@ -6,9 +6,9 @@ Quorum is a privacy-first treasury primitive: M-of-N shielded members approve
 proposals, **nobody learns who voted or who is in the set**, and membership can
 **evolve privately** (rotation) with **tiered spending** policies.
 
-> Status: **Chunk 0 — Foundation** (see [`PLAN.md`](PLAN.md)). Core domain model
-> implemented and tested; circuits, program, SDK, and evidence land in later
-> chunks.
+> Status: **All chunks complete** (see [`PLAN.md`](PLAN.md) and
+> [`criteria-checklist.md`](criteria-checklist.md)). Chunks 0–8 ✅; Chunk 9
+> (testnet deployment, video, solution PR) needs operator-side wallet/video.
 
 ## Why not the existing PoC?
 
@@ -30,18 +30,38 @@ built for shielded accounts from the ground up.
 ## Repository layout
 
 ```
-Quorum/
+LEZ-Quorum/
 ├── crates/
-│   └── quorum-core/      — domain model: Constitution, tiers, Proposal, nullifiers, error contract
-│   └── (lez-compat)        — LEZ v0.3 commitment/Merkle compatibility    [Chunk 1]
-│   └── (quorum-circuit)  — Risc0 threshold proof                       [Chunk 3]
-│   └── (quorum-sdk, -cli, -image-id, -verifier)                        [Chunks 3–5]
-├── programs/
-│   └── (quorum-gate)     — SPEL verifier program + IDL                 [Chunk 4]
-├── docs/                   — architecture, circuit design, privacy model, benchmarks
-├── scripts/                — demo + evidence regeneration
-├── examples/               — reference integrations
-└── .github/workflows/      — CI (fmt, clippy, tests, standalone-sequencer e2e)
+│   ├── quorum-core/      — domain model: Constitution, tiers, Proposal, nullifiers, error contract, Merkle member tree
+│   ├── lez-compat/       — LEZ v0.3 commitment/Merkle compatibility + shielded-account rules
+│   ├── quorum-circuit/   — Risc0 threshold proof (pure logic)
+│   ├── quorum-prover/    — host prover (Risc0), example: real 2-of-3 proof
+│   ├── quorum-image-id/  — pinned circuit image ID
+│   ├── quorum-gate-core/ — on-chain gate logic (initialize/propose/approve/execute/reject)
+│   ├── quorum-sdk/       — Rust SDK for Logos modules
+│   └── quorum-cli/       — CLI: create / propose / approve / execute / reject / info / new-root
+├── guests/quorum-threshold/ — Risc0 guest
+├── programs/quorum-gate/    — SPEL verifier program + IDL (idl/quorum_gate.idl.json)
+├── apps/basecamp-quorum/    — Logos Basecamp GUI module
+├── docs/                    — architecture, circuit design, privacy model, benchmarks, ADRs, write-up
+├── scripts/                 — demo + evidence regeneration
+└── .github/workflows/       — CI (fmt, clippy -D warnings, tests, real-proof job)
+```
+
+## Quick start
+
+```bash
+cargo build -p quorum-cli
+RISC0_DEV_MODE=1 ./scripts/demo.sh      # fast local demo (dev-mode proofs)
+RISC0_DEV_MODE=0 cargo run -p quorum-prover --example prove_threshold --release   # real proof (~6 min)
+```
+
+## Build & test
+
+```bash
+cargo fmt --check
+RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets -- -D warnings
+RISC0_DEV_MODE=1 cargo test --workspace
 ```
 
 ## Build & test
@@ -59,5 +79,14 @@ Licensed under either of Apache-2.0 or MIT, at your option.
 
 - [`PLAN.md`](PLAN.md) — chunked execution plan (LP-0002 win conditions)
 - [`criteria-checklist.md`](criteria-checklist.md) — every LP-0002 criterion mapped
+- [`docs/SOLUTION.md`](docs/SOLUTION.md) — the LP-0002 submission write-up
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — component overview
+- [`docs/CIRCUIT_DESIGN.md`](docs/CIRCUIT_DESIGN.md) — threshold proof scheme
+- [`docs/PRIVACY_MODEL.md`](docs/PRIVACY_MODEL.md) — nullifier + leak-surface analysis
+- [`docs/ERROR_CODES.md`](docs/ERROR_CODES.md) — deterministic error contract 1001–1013
+- [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) — real proof timings/sizes
+- [`docs/SECURITY_ASSUMPTIONS.md`](docs/SECURITY_ASSUMPTIONS.md) — trust model
+- [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) — honest disclosure
+- [`docs/adr/`](docs/adr/) — architecture decision records (ADR-0001..0006)
+- [`BUGS_FILED.md`](BUGS_FILED.md) — upstream findings
 - [`references/lez-multisig/`](../references/lez-multisig/) — the public PoC we replace

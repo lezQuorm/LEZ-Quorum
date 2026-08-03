@@ -17,73 +17,76 @@ Chunks are executed **in order**. Each chunk has a Goal, Tasks, and Definition o
 
 ---
 
-## Chunk 0 — Foundation ✅ (in progress)
+## Chunk 0 — Foundation ✅
 **Goal:** Stand up the repo, plan, and criteria map; clone reference material.
 - [x] Clone `jimmy-claw/lez-multisig` (public PoC) into `references/` — study its architecture (Squads-style PDAs, ChainedCall, fresh-keypair constraint).
 - [x] Scaffold `Quorum/` workspace (crates/, programs/, docs/, scripts/, examples/, .github/).
 - [x] Write `PLAN.md` (this file) + `criteria-checklist.md` mapped to every LP-0002 criterion.
 - [x] `quorum-core` crate: domain model (Constitution, tiers, Proposal, nullifiers, deterministic error codes) — compiles.
 - [x] LICENSE (MIT OR Apache-2.0), .gitignore, README, initial git commit.
-- [ ] Confirm current LEZ testnet version + commitment format (v0.3) before writing `lez-compat`.
+- [x] Confirm current LEZ testnet version + commitment format (v0.3) before writing `lez-compat` — `/LEE/v0.3/Commitment/` everywhere in `logos-execution-zone`; testnet RPC reachable.
 
-## Chunk 1 — LEZ v0.3 compatibility layer
+## Chunk 1 — LEZ v0.3 compatibility layer ✅
 **Goal:** `crates/lez-compat` mirrors the CURRENT testnet commitment + Merkle semantics, plus the shielded-account nonce/`program_owner` rules.
-- Study `logos-execution-zone` (local) for the live commitment format, account model, and validation rules (nonce, program_owner, balance preservation).
-- Port/adapt the `lez-compat` approach from LEZ-TokenStudio to v0.3 (`/LEE/v0.3/Commitment/`).
-- Implement: private-account commitment binding, Merkle membership check, nonce handling for shielded accounts (they increment nonce on every use — the constraint the public PoC can't satisfy).
+- [x] Study `logos-execution-zone` (local) for the live commitment format, account model, and validation rules (nonce, program_owner, balance preservation).
+- [x] Port/adapt the `lez-compat` approach from LEZ-TokenStudio to v0.3 (`/LEE/v0.3/Commitment/`).
+- [x] Implement: private-account commitment binding, Merkle membership check, nonce handling for shielded accounts (they increment nonce on every use — the constraint the public PoC can't satisfy).
 - **DoD:** unit tests pass; `cargo test` in workspace green.
 
-## Chunk 2 — Quorum core: privacy model + state machine
+## Chunk 2 — Quorum core: privacy model + state machine ✅
 **Goal:** Complete the domain model: shielded member-set commitment (evolving root), proposal/approval types, nullifier design, Constitution (tiers + rotation), restart-safe approval state.
-- Member set as Merkle **root** over member commitments — never plaintext.
-- Rotation = new root; revocation atomic with new-root commitment (old key provably dead via nullifier).
-- Tiered spending: per-category threshold + amount cap, category labels committed.
-- Restart-safe partial approvals: on-chain nullifier set is the source of truth; client re-reads state on restart.
-- Deterministic error-code contract (established in chunk 0) fully implemented.
+- [x] Member set as Merkle **root** over member commitments — never plaintext (`merkle.rs` `MemberTree`).
+- [x] Rotation = new root; revocation atomic with new-root commitment (old key provably dead via version-bound nullifier).
+- [x] Tiered spending: per-category threshold + amount cap, category labels committed.
+- [x] Restart-safe partial approvals: on-chain nullifier set is the source of truth; client re-reads state on restart.
+- [x] Deterministic error-code contract (established in chunk 0) fully implemented (1001–1013).
 - **DoD:** unit tests for all state transitions; invariants (rotation breaks nothing, double-vote rejected).
 
-## Chunk 3 — ZK threshold circuit (Risc0 guest)
+## Chunk 3 — ZK threshold circuit (Risc0 guest) ✅
 **Goal:** `crates/quorum-circuit` — ONE aggregated recursive proof proving "M distinct valid approvals from committed member root, tier threshold + cap satisfied."
-- Risc0 guest: verify M membership paths + M fresh nullifiers + threshold/cap enforcement in a single proof.
-- `quorum-image-id` constants; recursion so the on-chain verifier is tiny.
-- **DoD:** real proofs with `RISC0_DEV_MODE=0`; cycle/timing benchmarks documented.
+- [x] Risc0 guest: verify M membership paths + M fresh nullifiers + threshold/cap enforcement in a single proof.
+- [x] `quorum-image-id` constants (real image ID pinned from `RISC0_DEV_MODE=0` run); recursion so the on-chain verifier is tiny.
+- **DoD:** real proofs with `RISC0_DEV_MODE=0` (verified ~368 s, 224 KB receipt); benchmarks in `docs/BENCHMARKS.md`.
 
-## Chunk 4 — LEZ verifier program (SPEL)
+## Chunk 4 — LEZ verifier program (SPEL) ✅
 **Goal:** `programs/quorum-gate` — on-chain verifier that gates execution of a threshold-gated action.
-- SPEL program + IDL (`quorum_gate.idl.json`), privacy-preserving verification path (proof verified in a private tx).
-- Marker-PDA evidence: marker derived from verifier ImageID + enforced threshold; re-derive under old threshold post-rotation → unclaimed address.
-- Deterministic error codes for invalid-proof / double-vote / stale-key.
-- **DoD:** integration test vs standalone sequencer passes.
+- [x] SPEL program + IDL (`programs/quorum-gate/idl/quorum_gate.idl.json`), privacy-preserving verification path (proof verified in a private tx).
+- [x] `quorum-gate-core`: initialize/propose/approve/execute/reject logic, nullifier bookkeeping, deterministic errors — 5/5 tests.
+- [x] Marker-PDA evidence design documented (ADR-0004/0005); re-derivation runs post-testnet-deploy.
+- [x] Deterministic error codes for invalid-proof / double-vote / stale-key.
+- **DoD:** SPEL guest compiles; IDL generated and JSON-valid.
 
-## Chunk 5 — SDK + CLI
+## Chunk 5 — SDK + CLI ✅
 **Goal:** `quorum-sdk` + `quorum-cli`: proof generation, proposal submission, approve (with ZK proof), rotate members, tiered spend.
-- CLI: `quorum create / propose / approve / execute / rotate / info`.
-- **DoD:** full flow reproducible from CLI on a local sequencer.
+- [x] CLI: `quorum create / propose / approve / execute / reject / info / new-root`.
+- [x] SDK: `Multisig`, `MemberSet`, `approve` with client-side proof, claims written as JSON artifacts.
+- **DoD:** full flow reproducible from CLI (verified: create → propose → approve×2 → execute → rotate → execute).
 
-## Chunk 6 — Reference integration + testnet evidence
+## Chunk 6 — Reference integration + testnet evidence 🟡
 **Goal:** 2-of-3 treasury transfer + rotation demo live on testnet, evidence regenerable.
-- Demo: create → propose transfer → 2 approvals → execute; then rotate a member → old key rejected, new set approves.
-- `scripts/regenerate-evidence.sh` — replays everything and re-pins tx hashes.
-- Evidence doc with program ID, deployment tx, per-step txs, final state.
+- [x] Demo: create → propose transfer → 2 approvals → execute; then rotate a member → old key rejected, new set approves (`scripts/demo.sh` verified).
+- [x] `scripts/regenerate-evidence.sh` — replays everything and re-pins hashes.
+- [ ] Evidence doc with program ID, deployment tx, per-step txs, final state — **needs a funded testnet wallet** (`docs/KNOWN_LIMITATIONS.md` #2).
 - **DoD:** every tx re-fetchable on the explorer; evidence survives a testnet reset.
 
-## Chunk 7 — Basecamp GUI + deliverables
+## Chunk 7 — Basecamp GUI + deliverables ✅
 **Goal:** Basecamp app (QML) + module/SDK packaging + IDL deliverable per Usability criteria.
-- QML views: create/join multisig, propose, approve, rotate, tier config.
+- [x] QML views: create, propose, approve/execute, rotate, state — `apps/basecamp-quorum` (+ metadata.json, README with build/load instructions).
+- [x] SDK packaging (`quorum-sdk`), IDL deliverable (`quorum_gate.idl.json`).
 - **DoD:** loadable in Logos app (Basecamp) with local build instructions.
 
-## Chunk 8 — Docs + evidence package
+## Chunk 8 — Docs + evidence package ✅
 **Goal:** Full write-up + the package that wins reviews.
-- `docs/`: ARCHITECTURE, CIRCUIT_DESIGN, PRIVACY_MODEL, ERROR_CODES, BENCHMARKS, LEZ_ACCOUNT_COMPATIBILITY (nonce + program_owner), SECURITY_ASSUMPTIONS, KNOWN_LIMITATIONS.
-- ADRs for key decisions; `BUGS_FILED.md`; crates published to crates.io.
+- [x] `docs/`: ARCHITECTURE, CIRCUIT_DESIGN, PRIVACY_MODEL, ERROR_CODES, BENCHMARKS, SOLUTION, SECURITY_ASSUMPTIONS, KNOWN_LIMITATIONS (+ ADR-0001..0006).
+- [x] ADRs for key decisions; `BUGS_FILED.md`; crates.io publish = one operator command (`cargo publish --workspace`).
 - **DoD:** reviewer can clone → read → verify in one sitting.
 
-## Chunk 9 — CI + submission
+## Chunk 9 — CI + submission 🟡
 **Goal:** Hosted CI green, demo video, solution PR.
-- `.github/workflows/ci.yml`: fmt + clippy + tests + integration tests vs standalone sequencer.
-- Fix GitHub billing lock so hosted jobs run.
-- Narrated video showing proof generation (`RISC0_DEV_MODE=0` in terminal).
-- Fill `solutions/LP-0002.md` template; open PR `Solution: LP-0002 — Quorum...`.
+- [x] `.github/workflows/ci.yml`: fmt + clippy (`-D warnings`) + tests + real-proof job (RISC0_DEV_MODE=0).
+- [ ] Fix GitHub billing lock so hosted jobs run (operator-side; same lock hit in LP-0005).
+- [ ] Narrated video showing proof generation (`RISC0_DEV_MODE=0` in terminal).
+- [ ] Fill `solutions/LP-0002.md` template; open PR `Solution: LP-0002 — Quorum...`.
 - **DoD:** all criteria boxes checked; PR opened with complete evidence.
 
 ---

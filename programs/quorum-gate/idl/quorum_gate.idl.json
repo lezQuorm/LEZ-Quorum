@@ -1,0 +1,142 @@
+{
+  "accounts": [],
+  "errors": [],
+  "instruction_type": "quorum_gate_core::QuorumInstruction",
+  "instructions": [
+    {
+      "accounts": [
+        {
+          "init": true,
+          "name": "multisig",
+          "signer": true,
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "threshold",
+          "type": "u8"
+        },
+        {
+          "name": "member_count",
+          "type": "u8"
+        },
+        {
+          "name": "member_root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "tiers",
+          "type": {
+            "vec": {
+              "defined": "TierPolicy"
+            }
+          }
+        }
+      ],
+      "name": "initialize"
+    },
+    {
+      "accounts": [
+        {
+          "init": false,
+          "name": "multisig",
+          "signer": false,
+          "writable": true
+        },
+        {
+          "init": true,
+          "name": "proposal",
+          "signer": true,
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "action",
+          "type": {
+            "defined": "ActionData"
+          }
+        }
+      ],
+      "name": "propose"
+    },
+    {
+      "accounts": [
+        {
+          "init": false,
+          "name": "multisig",
+          "signer": false,
+          "writable": true
+        },
+        {
+          "init": false,
+          "name": "proposal",
+          "signer": false,
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "proposal_id",
+          "type": "u64"
+        },
+        {
+          "name": "claim",
+          "type": {
+            "defined": "ThresholdClaim"
+          }
+        }
+      ],
+      "name": "approve"
+    },
+    {
+      "accounts": [
+        {
+          "init": false,
+          "name": "multisig",
+          "signer": false,
+          "writable": true
+        },
+        {
+          "init": false,
+          "name": "proposal",
+          "signer": false,
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "proposal_id",
+          "type": "u64"
+        }
+      ],
+      "name": "execute"
+    },
+    {
+      "accounts": [
+        {
+          "init": false,
+          "name": "proposal",
+          "signer": false,
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "proposal_id",
+          "type": "u64"
+        }
+      ],
+      "name": "reject"
+    }
+  ],
+  "name": "quorum_gate",
+  "types": [],
+  "version": "0.1.0"
+}

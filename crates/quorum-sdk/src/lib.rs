@@ -100,6 +100,7 @@ impl MemberSet {
     ///
     /// # Errors
     /// [`SdkError::Rng`] if the OS RNG fails.
+    #[must_use]
     pub fn generate(count: usize) -> Self {
         let mut secrets = Vec::with_capacity(count);
         for _ in 0..count {
@@ -121,11 +122,14 @@ impl MemberSet {
     }
 
     /// Builds a membership-proven approval witness for `member`.
+    ///
+    /// # Panics
+    /// If `member` is not part of `self` (its commitment is not a leaf).
     #[must_use]
     pub fn approval_witness(
         &self,
         member: &Member,
-        proposal_id: u64,
+        _proposal_id: u64,
         _constitution_version: u32,
     ) -> MemberApprovalWitness {
         let proof = MemberTree::new(
@@ -147,12 +151,15 @@ impl MemberSet {
 
 /// Builds an approval witness from a member set's commitments and one member's
 /// secret (the CLI stores only commitments + each member's own secret file).
+///
+/// # Panics
+/// If `member_secret` is not committed in `commitments`.
 #[must_use]
 pub fn approval_witness_for(
     commitments: &[[u8; 32]],
     member_secret: &[u8; 32],
-    proposal_id: u64,
-    constitution_version: u32,
+    _proposal_id: u64,
+    _constitution_version: u32,
 ) -> MemberApprovalWitness {
     let tree = MemberTree::new(commitments);
     let commitment = member_commitment(member_secret);
@@ -247,7 +254,7 @@ impl Multisig {
         // Sanity: the witness must satisfy the statement before any proving.
         evaluate(&witness).map_err(quorum_prover::ProverError::InvalidWitness)?;
 
-        let proof = prove_witness(witness)?;
+        let proof = prove_witness(&witness)?;
         if proof.journal.proposal_id != proposal_id {
             return Err(SdkError::ProofProposalMismatch);
         }
@@ -303,14 +310,13 @@ impl Multisig {
 }
 
 /// Proves a witness in the current mode (dev → fast mock; real → succinct).
-fn prove_witness(witness: ThresholdWitness) -> Result<QuorumProof, SdkError> {
+fn prove_witness(witness: &ThresholdWitness) -> Result<QuorumProof, SdkError> {
     match dev_mode_status()? {
-        DevModeStatus::Disabled => Ok(prove(&witness)?),
+        DevModeStatus::Disabled => Ok(prove(witness)?),
         DevModeStatus::Enabled => {
-            let expected =
-                evaluate(&witness).map_err(quorum_prover::ProverError::InvalidWitness)?;
+            let expected = evaluate(witness).map_err(quorum_prover::ProverError::InvalidWitness)?;
             let env = risc0_zkvm::ExecutorEnv::builder()
-                .write(&witness)
+                .write(witness)
                 .map_err(|e| SdkError::ReceiptEncode(e.to_string()))?
                 .build()
                 .map_err(|e| SdkError::ReceiptEncode(e.to_string()))?;
@@ -339,6 +345,7 @@ fn prove_witness(witness: ThresholdWitness) -> Result<QuorumProof, SdkError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::cast_possible_truncation)]
 mod tests {
     use super::*;
 

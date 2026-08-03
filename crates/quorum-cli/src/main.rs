@@ -55,7 +55,7 @@ enum Command {
         /// Number of members N.
         #[arg(long)]
         members: usize,
-        /// Optional tiers as JSON: [{"id":1,"threshold":2,"max_amount":1000}]
+        /// Optional tiers as JSON: `[{"id":1,"threshold":2,"max_amount":1000}]`
         #[arg(long)]
         tiers: Option<String>,
     },
@@ -106,6 +106,12 @@ enum Command {
     },
     /// Print the current state.
     Info,
+    /// Print the member root for a freshly generated member set (rotation helper).
+    NewRoot {
+        /// Number of members in the new set.
+        #[arg(long)]
+        members: usize,
+    },
 }
 
 fn main() {
@@ -122,7 +128,7 @@ fn run() -> Result<(), String> {
             threshold,
             members,
             tiers,
-        } => create(threshold, members, tiers),
+        } => create(threshold, members, tiers.as_deref()),
         Command::Propose {
             action,
             recipient,
@@ -132,11 +138,11 @@ fn run() -> Result<(), String> {
             new_member_count,
             new_threshold,
         } => propose(
-            action,
-            recipient,
+            action.as_str(),
+            recipient.as_deref(),
             amount,
             tier,
-            new_member_root,
+            new_member_root.as_deref(),
             new_member_count,
             new_threshold,
         ),
@@ -144,15 +150,23 @@ fn run() -> Result<(), String> {
         Command::Execute { proposal } => execute(proposal),
         Command::Reject { proposal } => reject(proposal),
         Command::Info => info(),
+        Command::NewRoot { members } => {
+            if members == 0 || members > 10 {
+                return Err("member count must be 1..=10".into());
+            }
+            let set = MemberSet::generate(members);
+            println!("{}", hex(&set.root));
+            Ok(())
+        }
     }
 }
 
-fn create(threshold: u8, members: usize, tiers: Option<String>) -> Result<(), String> {
+fn create(threshold: u8, members: usize, tiers: Option<&str>) -> Result<(), String> {
     if members == 0 || members > 10 {
         return Err("member count must be 1..=10".into());
     }
     let set = MemberSet::generate(members);
-    let tiers = parse_tiers(tiers.as_deref())?;
+    let tiers = parse_tiers(tiers)?;
     let multisig = Multisig::create(threshold, &set, tiers).map_err(|e| e.to_string())?;
 
     let state = QuorumFile {
@@ -183,18 +197,18 @@ fn parse_tiers(tiers: Option<&str>) -> Result<Vec<TierPolicy>, String> {
 }
 
 fn propose(
-    action: String,
-    recipient: Option<String>,
+    action: &str,
+    recipient: Option<&str>,
     amount: Option<u64>,
     tier: Option<u8>,
-    new_member_root: Option<String>,
+    new_member_root: Option<&str>,
     new_member_count: Option<u8>,
     new_threshold: Option<u8>,
 ) -> Result<(), String> {
     let mut state = load_state()?;
-    let action = match action.as_str() {
+    let action = match action {
         "transfer" => ActionData::Transfer {
-            recipient: parse_hex32(recipient.as_deref().ok_or("--recipient required")?)?,
+            recipient: parse_hex32(recipient.ok_or("--recipient required")?)?,
             amount: amount.ok_or("--amount required")?,
             tier_id: tier.ok_or("--tier required")?,
             tier_max_amount: state
@@ -207,11 +221,7 @@ fn propose(
                 .max_amount,
         },
         "rotate" => ActionData::RotateMembers {
-            new_member_root: parse_hex32(
-                new_member_root
-                    .as_deref()
-                    .ok_or("--new-member-root required")?,
-            )?,
+            new_member_root: parse_hex32(new_member_root.ok_or("--new-member-root required")?)?,
             new_member_count: new_member_count.ok_or("--new-member-count required")?,
         },
         "threshold" => ActionData::ChangeThreshold {

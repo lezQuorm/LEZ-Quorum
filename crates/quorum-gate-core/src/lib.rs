@@ -597,6 +597,7 @@ mod tests {
     use quorum_core::merkle::MemberTree;
     use quorum_core::nullifier::member_commitment;
 
+    #[allow(clippy::cast_possible_truncation)] // test helper: n < 256 always
     fn secrets(n: usize) -> Vec<[u8; 32]> {
         (0..n).map(|i| [i as u8; 32]).collect()
     }
