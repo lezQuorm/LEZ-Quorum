@@ -1,8 +1,8 @@
-# Conclave
+# LEZ-Quorum
 
 **Private M-of-N multisig for the Logos Execution Zone (LEZ) — λPrize LP-0002.**
 
-Conclave is a privacy-first treasury primitive: M-of-N shielded members approve
+Quorum is a privacy-first treasury primitive: M-of-N shielded members approve
 proposals, **nobody learns who voted or who is in the set**, and membership can
 **evolve privately** (rotation) with **tiered spending** policies.
 
@@ -15,12 +15,12 @@ proposals, **nobody learns who voted or who is in the set**, and membership can
 The public [`lez-multisig`](https://github.com/jimmy-claw/lez-multisig) PoC
 requires members to be **fresh zero-nonce keypairs claimed by the program** —
 a constraint shielded (private) LEZ accounts cannot satisfy, because they are
-owned by the privacy protocol and increment nonce on every use. Conclave is
+owned by the privacy protocol and increment nonce on every use. Quorum is
 built for shielded accounts from the ground up.
 
 ## Privacy model
 
-| Leak surface (public PoC) | Conclave |
+| Leak surface (public PoC) | Quorum |
 |---|---|
 | Member list on-chain | Only a **Merkle root** over member commitments |
 | Every vote attributed | Only a **nullifier set** + one aggregated ZK threshold proof |
@@ -30,14 +30,14 @@ built for shielded accounts from the ground up.
 ## Repository layout
 
 ```
-Conclave/
+Quorum/
 ├── crates/
-│   └── conclave-core/      — domain model: Constitution, tiers, Proposal, nullifiers, error contract
+│   └── quorum-core/      — domain model: Constitution, tiers, Proposal, nullifiers, error contract
 │   └── (lez-compat)        — LEZ v0.3 commitment/Merkle compatibility    [Chunk 1]
-│   └── (conclave-circuit)  — Risc0 threshold proof                       [Chunk 3]
-│   └── (conclave-sdk, -cli, -image-id, -verifier)                        [Chunks 3–5]
+│   └── (quorum-circuit)  — Risc0 threshold proof                       [Chunk 3]
+│   └── (quorum-sdk, -cli, -image-id, -verifier)                        [Chunks 3–5]
 ├── programs/
-│   └── (conclave-gate)     — SPEL verifier program + IDL                 [Chunk 4]
+│   └── (quorum-gate)     — SPEL verifier program + IDL                 [Chunk 4]
 ├── docs/                   — architecture, circuit design, privacy model, benchmarks
 ├── scripts/                — demo + evidence regeneration
 ├── examples/               — reference integrations

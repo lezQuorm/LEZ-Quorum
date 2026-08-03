@@ -1,21 +1,21 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/conclave-core",
+    "crates/quorum-core",
     # Chunk 1: "crates/lez-compat",
-    # Chunk 3: "crates/conclave-circuit",
-    # Chunk 3: "crates/conclave-image-id",
-    # Chunk 5: "crates/conclave-sdk",
-    # Chunk 5: "crates/conclave-cli",
-    # Chunk 4: "programs/conclave-gate",
+    # Chunk 3: "crates/quorum-circuit",
+    # Chunk 3: "crates/quorum-image-id",
+    # Chunk 5: "crates/quorum-sdk",
+    # Chunk 5: "crates/quorum-cli",
+    # Chunk 4: "programs/quorum-gate",
 ]
-default-members = ["crates/conclave-core"]
+default-members = ["crates/quorum-core"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/FidelCoder/Conclave"
+repository = "https://github.com/FidelCoder/LEZ-Quorum"
 rust-version = "1.91"
 
 [workspace.lints.rust]

@@ -1,19 +1,19 @@
-//! # Conclave core — private M-of-N multisig domain model for LEZ
+//! # Quorum core — private M-of-N multisig domain model for LEZ
 //!
-//! Conclave is a private M-of-N multisig primitive for the Logos Execution
+//! Quorum is a private M-of-N multisig primitive for the Logos Execution
 //! Zone (LEZ), submitted for λPrize **LP-0002**.
 //!
 //! ## Privacy properties
 //!
 //! Unlike the public `lez-multisig` `PoC` (which requires fresh zero-nonce
 //! keypairs claimed by the program — impossible for shielded accounts),
-//! Conclave is built around **shielded member accounts**:
+//! Quorum is built around **shielded member accounts**:
 //!
 //! - **No member list on-chain.** The member set is stored only as a Merkle
 //!   **root** over per-member identity commitments. An observer cannot tell
 //!   who is in the set, or even *whether* the set changed.
 //! - **No votes on-chain.** Approvals are expressed as ZK threshold proofs
-//!   (built in `conclave-circuit`); the on-chain verifier learns only that a
+//!   (built in `quorum-circuit`); the on-chain verifier learns only that a
 //!   threshold of distinct, valid members approved.
 //! - **Double-vote prevention.** A member's approval binds to the proposal via
 //!   a domain-separated **nullifier**; the program rejects duplicate nullifiers.
@@ -40,7 +40,7 @@ pub mod nullifier;
 pub mod proposal;
 
 pub use constitution::{Constitution, SpendingTier, MAX_MEMBERS, MAX_TIERS};
-pub use error::{ConclaveError, Result};
+pub use error::{QuorumError, Result};
 pub use nullifier::{derive_nullifier, member_commitment};
 pub use proposal::{Proposal, ProposalKind, ProposalStatus};
 
@@ -56,5 +56,5 @@ pub type Nullifier = [u8; 32];
 /// A LEZ program identifier.
 pub type ProgramId = [u8; 32];
 
-/// Canonical domain-separation tag for all Conclave hashes.
-pub const DOMAIN_TAG: &[u8] = b"conclave/v1";
+/// Canonical domain-separation tag for all Quorum hashes.
+pub const DOMAIN_TAG: &[u8] = b"quorum/v1";

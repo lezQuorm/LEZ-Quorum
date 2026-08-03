@@ -5,7 +5,7 @@
 //! circuit (Chunk 3) proves the nullifiers are real, distinct, and bound to
 //! members of the current member root.
 
-use crate::{AccountId, Commitment, ConclaveError, Constitution, Nullifier, Result};
+use crate::{AccountId, Commitment, Constitution, Nullifier, QuorumError, Result};
 
 /// What a proposal wants to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +83,7 @@ impl Proposal {
     /// (rotation, threshold change) use the constitution's default threshold.
     ///
     /// # Errors
-    /// [`ConclaveError::TierNotFound`] for a transfer referencing an unknown tier.
+    /// [`QuorumError::TierNotFound`] for a transfer referencing an unknown tier.
     pub fn required_threshold(&self, constitution: &Constitution) -> Result<u8> {
         match &self.kind {
             ProposalKind::Transfer { tier_id, .. } => Ok(constitution.tier(*tier_id)?.threshold),
@@ -96,15 +96,15 @@ impl Proposal {
     /// Validates the proposal against a constitution *before* collecting votes.
     ///
     /// # Errors
-    /// - [`ConclaveError::InvalidMemberRoot`] if the constitution version differs.
-    /// - [`ConclaveError::TierNotFound`] / [`ConclaveError::AmountExceedsTierCap`]
+    /// - [`QuorumError::InvalidMemberRoot`] if the constitution version differs.
+    /// - [`QuorumError::TierNotFound`] / [`QuorumError::AmountExceedsTierCap`]
     ///   for invalid transfers.
-    /// - [`ConclaveError::RotationNoop`] / [`ConclaveError::RotationWouldBreakThreshold`]
+    /// - [`QuorumError::RotationNoop`] / [`QuorumError::RotationWouldBreakThreshold`]
     ///   for invalid rotations.
-    /// - [`ConclaveError::ThresholdOutOfRange`] for invalid threshold changes.
+    /// - [`QuorumError::ThresholdOutOfRange`] for invalid threshold changes.
     pub fn validate_against(&self, constitution: &Constitution) -> Result<()> {
         if self.constitution_version != constitution.version {
-            return Err(ConclaveError::InvalidMemberRoot);
+            return Err(QuorumError::InvalidMemberRoot);
         }
         match &self.kind {
             ProposalKind::Transfer {
@@ -112,7 +112,7 @@ impl Proposal {
             } => {
                 let tier = constitution.tier(*tier_id)?;
                 if *amount > tier.max_amount {
-                    return Err(ConclaveError::AmountExceedsTierCap);
+                    return Err(QuorumError::AmountExceedsTierCap);
                 }
             }
             ProposalKind::RotateMembers {
@@ -132,14 +132,14 @@ impl Proposal {
     /// Records an approval nullifier.
     ///
     /// # Errors
-    /// - [`ConclaveError::ProposalNotActive`] if the proposal is not active.
-    /// - [`ConclaveError::DuplicateNullifier`] on double-vote.
+    /// - [`QuorumError::ProposalNotActive`] if the proposal is not active.
+    /// - [`QuorumError::DuplicateNullifier`] on double-vote.
     pub fn add_approval(&mut self, nullifier: Nullifier) -> Result<()> {
         if self.status != ProposalStatus::Active {
-            return Err(ConclaveError::ProposalNotActive);
+            return Err(QuorumError::ProposalNotActive);
         }
         if self.approvals.contains(&nullifier) {
-            return Err(ConclaveError::DuplicateNullifier);
+            return Err(QuorumError::DuplicateNullifier);
         }
         self.approvals.push(nullifier);
         Ok(())
@@ -148,10 +148,10 @@ impl Proposal {
     /// Whether the current approval count meets the required threshold.
     ///
     /// # Errors
-    /// [`ConclaveError::ProposalNotActive`] if the proposal is not active.
+    /// [`QuorumError::ProposalNotActive`] if the proposal is not active.
     pub fn threshold_met(&self, constitution: &Constitution) -> Result<bool> {
         if self.status != ProposalStatus::Active {
-            return Err(ConclaveError::ProposalNotActive);
+            return Err(QuorumError::ProposalNotActive);
         }
         Ok(self.approvals.len() >= usize::from(self.required_threshold(constitution)?))
     }
@@ -159,10 +159,10 @@ impl Proposal {
     /// Marks the proposal rejected.
     ///
     /// # Errors
-    /// [`ConclaveError::ProposalNotActive`] if the proposal is not active.
+    /// [`QuorumError::ProposalNotActive`] if the proposal is not active.
     pub fn reject(&mut self) -> Result<()> {
         if self.status != ProposalStatus::Active {
-            return Err(ConclaveError::ProposalNotActive);
+            return Err(QuorumError::ProposalNotActive);
         }
         self.status = ProposalStatus::Rejected;
         Ok(())
@@ -171,10 +171,10 @@ impl Proposal {
     /// Marks the proposal executed.
     ///
     /// # Errors
-    /// [`ConclaveError::ProposalNotActive`] if the proposal is not active.
+    /// [`QuorumError::ProposalNotActive`] if the proposal is not active.
     pub fn execute(&mut self) -> Result<()> {
         if self.status != ProposalStatus::Active {
-            return Err(ConclaveError::ProposalNotActive);
+            return Err(QuorumError::ProposalNotActive);
         }
         self.status = ProposalStatus::Executed;
         Ok(())
@@ -183,10 +183,10 @@ impl Proposal {
     /// Cancels the proposal.
     ///
     /// # Errors
-    /// [`ConclaveError::ProposalNotActive`] if the proposal is not active.
+    /// [`QuorumError::ProposalNotActive`] if the proposal is not active.
     pub fn cancel(&mut self) -> Result<()> {
         if self.status != ProposalStatus::Active {
-            return Err(ConclaveError::ProposalNotActive);
+            return Err(QuorumError::ProposalNotActive);
         }
         self.status = ProposalStatus::Cancelled;
         Ok(())
@@ -245,7 +245,7 @@ mod tests {
         );
         assert_eq!(
             over.validate_against(&c),
-            Err(ConclaveError::AmountExceedsTierCap)
+            Err(QuorumError::AmountExceedsTierCap)
         );
     }
 
@@ -264,7 +264,7 @@ mod tests {
         );
         let n = crate::derive_nullifier(&[1u8; 32], p.id, c.version);
         p.add_approval(n).unwrap();
-        assert_eq!(p.add_approval(n), Err(ConclaveError::DuplicateNullifier));
+        assert_eq!(p.add_approval(n), Err(QuorumError::DuplicateNullifier));
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
         assert_eq!(p.status, ProposalStatus::Executed);
         assert_eq!(
             p.add_approval(crate::derive_nullifier(&[1u8; 32], 1, 1)),
-            Err(ConclaveError::ProposalNotActive)
+            Err(QuorumError::ProposalNotActive)
         );
     }
 
@@ -330,7 +330,7 @@ mod tests {
         );
         assert_eq!(
             bad.validate_against(&c),
-            Err(ConclaveError::RotationWouldBreakThreshold)
+            Err(QuorumError::RotationWouldBreakThreshold)
         );
     }
 }

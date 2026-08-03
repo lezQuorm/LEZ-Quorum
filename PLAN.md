@@ -1,8 +1,8 @@
-# Conclave — LP-0002 Execution Plan
+# Quorum — LP-0002 Execution Plan
 
 **Prize:** LP-0002 — Private M-of-N Multisig ($1,200, Large)
 **Idea:** Idea 02 — private multisig with shielded member rotation + tiered thresholds
-**Repo (proposed):** `FidelCoder/Conclave`
+**Repo (proposed):** `FidelCoder/Quorum`
 **Race:** 3 open submissions (#92 Tranquil-Flow, #97 jeefxM, #115 duongja) — all flawed. First-complete wins.
 
 ## Win conditions (from LP-0005 lessons)
@@ -20,9 +20,9 @@ Chunks are executed **in order**. Each chunk has a Goal, Tasks, and Definition o
 ## Chunk 0 — Foundation ✅ (in progress)
 **Goal:** Stand up the repo, plan, and criteria map; clone reference material.
 - [x] Clone `jimmy-claw/lez-multisig` (public PoC) into `references/` — study its architecture (Squads-style PDAs, ChainedCall, fresh-keypair constraint).
-- [x] Scaffold `Conclave/` workspace (crates/, programs/, docs/, scripts/, examples/, .github/).
+- [x] Scaffold `Quorum/` workspace (crates/, programs/, docs/, scripts/, examples/, .github/).
 - [x] Write `PLAN.md` (this file) + `criteria-checklist.md` mapped to every LP-0002 criterion.
-- [x] `conclave-core` crate: domain model (Constitution, tiers, Proposal, nullifiers, deterministic error codes) — compiles.
+- [x] `quorum-core` crate: domain model (Constitution, tiers, Proposal, nullifiers, deterministic error codes) — compiles.
 - [x] LICENSE (MIT OR Apache-2.0), .gitignore, README, initial git commit.
 - [ ] Confirm current LEZ testnet version + commitment format (v0.3) before writing `lez-compat`.
 
@@ -33,7 +33,7 @@ Chunks are executed **in order**. Each chunk has a Goal, Tasks, and Definition o
 - Implement: private-account commitment binding, Merkle membership check, nonce handling for shielded accounts (they increment nonce on every use — the constraint the public PoC can't satisfy).
 - **DoD:** unit tests pass; `cargo test` in workspace green.
 
-## Chunk 2 — Conclave core: privacy model + state machine
+## Chunk 2 — Quorum core: privacy model + state machine
 **Goal:** Complete the domain model: shielded member-set commitment (evolving root), proposal/approval types, nullifier design, Constitution (tiers + rotation), restart-safe approval state.
 - Member set as Merkle **root** over member commitments — never plaintext.
 - Rotation = new root; revocation atomic with new-root commitment (old key provably dead via nullifier).
@@ -43,21 +43,21 @@ Chunks are executed **in order**. Each chunk has a Goal, Tasks, and Definition o
 - **DoD:** unit tests for all state transitions; invariants (rotation breaks nothing, double-vote rejected).
 
 ## Chunk 3 — ZK threshold circuit (Risc0 guest)
-**Goal:** `crates/conclave-circuit` — ONE aggregated recursive proof proving "M distinct valid approvals from committed member root, tier threshold + cap satisfied."
+**Goal:** `crates/quorum-circuit` — ONE aggregated recursive proof proving "M distinct valid approvals from committed member root, tier threshold + cap satisfied."
 - Risc0 guest: verify M membership paths + M fresh nullifiers + threshold/cap enforcement in a single proof.
-- `conclave-image-id` constants; recursion so the on-chain verifier is tiny.
+- `quorum-image-id` constants; recursion so the on-chain verifier is tiny.
 - **DoD:** real proofs with `RISC0_DEV_MODE=0`; cycle/timing benchmarks documented.
 
 ## Chunk 4 — LEZ verifier program (SPEL)
-**Goal:** `programs/conclave-gate` — on-chain verifier that gates execution of a threshold-gated action.
-- SPEL program + IDL (`conclave_gate.idl.json`), privacy-preserving verification path (proof verified in a private tx).
+**Goal:** `programs/quorum-gate` — on-chain verifier that gates execution of a threshold-gated action.
+- SPEL program + IDL (`quorum_gate.idl.json`), privacy-preserving verification path (proof verified in a private tx).
 - Marker-PDA evidence: marker derived from verifier ImageID + enforced threshold; re-derive under old threshold post-rotation → unclaimed address.
 - Deterministic error codes for invalid-proof / double-vote / stale-key.
 - **DoD:** integration test vs standalone sequencer passes.
 
 ## Chunk 5 — SDK + CLI
-**Goal:** `conclave-sdk` + `conclave-cli`: proof generation, proposal submission, approve (with ZK proof), rotate members, tiered spend.
-- CLI: `conclave create / propose / approve / execute / rotate / info`.
+**Goal:** `quorum-sdk` + `quorum-cli`: proof generation, proposal submission, approve (with ZK proof), rotate members, tiered spend.
+- CLI: `quorum create / propose / approve / execute / rotate / info`.
 - **DoD:** full flow reproducible from CLI on a local sequencer.
 
 ## Chunk 6 — Reference integration + testnet evidence
@@ -83,7 +83,7 @@ Chunks are executed **in order**. Each chunk has a Goal, Tasks, and Definition o
 - `.github/workflows/ci.yml`: fmt + clippy + tests + integration tests vs standalone sequencer.
 - Fix GitHub billing lock so hosted jobs run.
 - Narrated video showing proof generation (`RISC0_DEV_MODE=0` in terminal).
-- Fill `solutions/LP-0002.md` template; open PR `Solution: LP-0002 — Conclave...`.
+- Fill `solutions/LP-0002.md` template; open PR `Solution: LP-0002 — Quorum...`.
 - **DoD:** all criteria boxes checked; PR opened with complete evidence.
 
 ---

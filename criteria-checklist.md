@@ -1,4 +1,4 @@
-# Conclave — LP-0002 Success Criteria Checklist
+# Quorum — LP-0002 Success Criteria Checklist
 
 Every box below maps 1:1 to a criterion in `logos-lambda-prize/prizes/LP-0002.md`. A box is ticked only when the evidence exists and is re-verifiable.
 
@@ -9,7 +9,7 @@ Legend: 🔲 planned · 🟡 in progress · ✅ done
 - [ ] **F1** Any M-of-N member holding a shielded LEZ account can submit an approval without revealing identity to on-chain observers or other members.
       → ZK threshold proof; member root commitment, never plaintext. (Chunk 2–3)
 - [ ] **F2** On-chain verifier confirms a threshold of M approvals without recording which members approved.
-      → `conclave-gate` verifies receipt; only nullifier set on-chain. (Chunk 3–4)
+      → `quorum-gate` verifies receipt; only nullifier set on-chain. (Chunk 3–4)
 - [ ] **F3** Double-vote prevention via nullifiers or equivalent.
       → `nullifier = H(member_secret, proposal_id, version)`; program rejects duplicates (error 1005). (Chunk 2)
 - [ ] **F4** Completed execution unlinkable to any individual member's shielded account.
@@ -22,15 +22,15 @@ Legend: 🔲 planned · 🟡 in progress · ✅ done
 
 ## Usability
 
-- [ ] **U1** Module/SDK to build Logos modules interacting with the program → `conclave-sdk`. (Chunk 5)
+- [ ] **U1** Module/SDK to build Logos modules interacting with the program → `quorum-sdk`. (Chunk 5)
 - [ ] **U2** Logos Basecamp app GUI with local build instructions + loadable assets. (Chunk 7)
-- [ ] **U3** SPEL IDL for the LEZ program → `programs/conclave-gate/idl/conclave_gate.idl.json`. (Chunk 4)
+- [ ] **U3** SPEL IDL for the LEZ program → `programs/quorum-gate/idl/quorum_gate.idl.json`. (Chunk 4)
 
 ## Reliability
 
 - [ ] **R1** Proof-generation failures handled gracefully with clear errors. (Chunk 5)
 - [ ] **R2** Partial approvals (< M) preserved and resumable across client restarts → on-chain nullifier set is source of truth. (Chunk 2, 5)
-- [ ] **R3** Deterministic, documented error codes for all invalid-proof and double-vote scenarios → `ConclaveError` contract. (Chunk 2, 4)
+- [ ] **R3** Deterministic, documented error codes for all invalid-proof and double-vote scenarios → `QuorumError` contract. (Chunk 2, 4)
 
 ## Performance
 

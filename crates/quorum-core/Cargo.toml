@@ -1,6 +1,6 @@
 [package]
-name = "conclave-core"
-description = "Conclave — private M-of-N multisig domain model for LEZ (LP-0002)"
+name = "quorum-core"
+description = "Quorum — private M-of-N multisig domain model for LEZ (LP-0002)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

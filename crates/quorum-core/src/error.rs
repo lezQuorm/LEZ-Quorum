@@ -1,4 +1,4 @@
-//! Deterministic error contract for Conclave.
+//! Deterministic error contract for Quorum.
 //!
 //! LP-0002 requires *"deterministic, documented error codes for all
 //! invalid-proof and double-vote scenarios"*. These codes are the contract
@@ -6,10 +6,10 @@
 
 use core::fmt;
 
-/// Errors produced by Conclave core validation.
+/// Errors produced by Quorum core validation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum ConclaveError {
+pub enum QuorumError {
     /// Constitution violates invariants (threshold range, empty tiers, ...).
     InvalidConstitution = 1001,
     /// Threshold outside `1..=MAX_MEMBERS` or `threshold > member_count`.
@@ -39,9 +39,9 @@ pub enum ConclaveError {
 }
 
 /// Convenience alias.
-pub type Result<T> = core::result::Result<T, ConclaveError>;
+pub type Result<T> = core::result::Result<T, QuorumError>;
 
-impl ConclaveError {
+impl QuorumError {
     /// The deterministic on-chain/off-chain error code.
     #[must_use]
     pub const fn code(self) -> u32 {
@@ -69,13 +69,13 @@ impl ConclaveError {
     }
 }
 
-impl fmt::Display for ConclaveError {
+impl fmt::Display for QuorumError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}] {}", self.code(), self.description())
     }
 }
 
-impl std::error::Error for ConclaveError {}
+impl std::error::Error for QuorumError {}
 
 #[cfg(test)]
 mod tests {
@@ -85,19 +85,19 @@ mod tests {
     fn codes_are_stable_and_unique() {
         let mut seen = std::collections::BTreeSet::new();
         let all = [
-            ConclaveError::InvalidConstitution,
-            ConclaveError::ThresholdOutOfRange,
-            ConclaveError::TierNotFound,
-            ConclaveError::AmountExceedsTierCap,
-            ConclaveError::DuplicateNullifier,
-            ConclaveError::InvalidMemberRoot,
-            ConclaveError::ProposalNotFound,
-            ConclaveError::ProposalNotActive,
-            ConclaveError::ThresholdNotMet,
-            ConclaveError::UnknownProposalKind,
-            ConclaveError::RotationWouldBreakThreshold,
-            ConclaveError::RotationNoop,
-            ConclaveError::DuplicateTierId,
+            QuorumError::InvalidConstitution,
+            QuorumError::ThresholdOutOfRange,
+            QuorumError::TierNotFound,
+            QuorumError::AmountExceedsTierCap,
+            QuorumError::DuplicateNullifier,
+            QuorumError::InvalidMemberRoot,
+            QuorumError::ProposalNotFound,
+            QuorumError::ProposalNotActive,
+            QuorumError::ThresholdNotMet,
+            QuorumError::UnknownProposalKind,
+            QuorumError::RotationWouldBreakThreshold,
+            QuorumError::RotationNoop,
+            QuorumError::DuplicateTierId,
         ];
         for e in all {
             assert!(seen.insert(e.code()), "duplicate code {}", e.code());
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn display_includes_code() {
-        let s = ConclaveError::DuplicateNullifier.to_string();
+        let s = QuorumError::DuplicateNullifier.to_string();
         assert!(s.contains("1005"), "got: {s}");
         assert!(s.contains("double-vote"));
     }

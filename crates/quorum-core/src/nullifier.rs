@@ -3,7 +3,7 @@
 //! ## Nullifiers (double-vote prevention)
 //!
 //! ```text
-//! nullifier = SHA256("conclave/v1/nullifier" || member_secret
+//! nullifier = SHA256("quorum/v1/nullifier" || member_secret
 //!                    || proposal_id_le64 || constitution_version_le32)
 //! ```
 //!
@@ -16,14 +16,14 @@
 //! ## Member commitments (shielded membership)
 //!
 //! ```text
-//! member_commitment = SHA256("conclave/v1/member" || member_secret)
+//! member_commitment = SHA256("quorum/v1/member" || member_secret)
 //! ```
 //!
 //! The multisig stores only the **root** of a Merkle tree over member
 //! commitments. Membership in the ZK circuit is proven with a Merkle path —
 //! no plaintext member list ever appears on-chain.
 //!
-//! > Note: LEZ's own commitment scheme uses Poseidon; `conclave-circuit` will
+//! > Note: LEZ's own commitment scheme uses Poseidon; `quorum-circuit` will
 //! > switch to the LEZ-native hash for on-chain-verifiable proofs (Chunk 3).
 //! > The SHA-256 forms here are the canonical *domain separation format*,
 //! > stable across both.
