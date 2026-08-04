@@ -1,74 +1,79 @@
-# Quorum — Circuit Design
+# Circuit Design
 
 ## Statement
 
-One Risc0 guest (`quorum-threshold`, pinned image ID in `quorum-image-id`) proves:
+The quorum-threshold Risc0 guest proves that:
 
-> "Each of the supplied approvals is by a **distinct** member of the committed set
-> `member_root` (a valid SHA-256 Merkle path exists for their commitment), their
-> **nullifier** is correctly derived for `proposal_id` under constitution version
-> `V`, the approval count meets the required threshold, and the action respects
-> its policy (transfer under tier cap / non-noop rotation / valid threshold change)."
+- every supplied approval knows a secret whose commitment belongs to the
+  specified member root;
+- all approval nullifiers are correctly derived and distinct;
+- the number of approvals meets the required threshold;
+- the proof is bound to one proposal ID and constitution version; and
+- the action passes the circuit-level transfer, rotation, or threshold check.
 
-## Witness (private inputs)
+## Private witness
 
-```rust
+~~~rust
 ThresholdWitness {
-    member_root,          // public binding
-    required_threshold,   // public binding
-    approvals: Vec<MemberApprovalWitness>,  // member_secret is PRIVATE
-    action,               // public binding
-    proposal_id,          // public binding
-    constitution_version, // public binding
+    member_root,
+    required_threshold,
+    approvals: Vec<MemberApprovalWitness>,
+    action,
+    proposal_id,
+    constitution_version,
 }
-```
+~~~
 
-## Evaluation (`quorum-circuit::evaluate`)
+Each MemberApprovalWitness contains a private member secret, leaf index, and
+Merkle siblings.
 
-1. `required_threshold ≥ 1`, `approvals.len() ≤ MAX_APPROVALS` (10).
-2. For each approval: `commitment = member_commitment(secret)`; verify the Merkle
-   path against `member_root` (LEZ hashing: `leaf = H(commitment)`,
-   `node = H(left‖right)`).
-3. `nullifier = derive_nullifier(secret, proposal_id, version)`; all nullifiers
-   must be pairwise distinct (double-vote prevention).
-4. `approvals.len() ≥ required_threshold`.
-5. Action policy: `Transfer.amount ≤ tier_max_amount`; `RotateMembers.new_root ≠
-   member_root`; `ChangeThreshold.new_threshold ≥ 1`.
+## Evaluation
 
-## Journal (public outputs)
+1. Require a nonzero threshold and at most ten approvals.
+2. Derive each Quorum member commitment with SHA-256 domain separation.
+3. Recompute each SHA-256 Merkle path to the supplied member root.
+4. Derive a proposal- and version-bound nullifier for each secret.
+5. Reject duplicate nullifiers.
+6. Require the approval count to meet the threshold.
+7. Check that a transfer is below its supplied cap, a rotation changes the
+   root, or a threshold change is nonzero.
 
-```rust
+The gate separately re-derives authoritative tier policy and validates all
+state and account bindings. Circuit checks do not replace gate checks.
+
+## Public journal
+
+~~~rust
 ThresholdJournal {
-    member_root, proposal_id, constitution_version,
-    required_threshold, approval_count,
-    nullifiers,               // on-chain double-vote prevention
-    action,                   // what the gate executes
+    member_root,
+    proposal_id,
+    constitution_version,
+    required_threshold,
+    approval_count,
+    nullifiers,
+    action,
 }
-```
+~~~
 
-The journal contains **no secrets** (tested: `journal_does_not_expose_secrets`).
+The journal contains no member secrets, commitment list, leaf indices, or
+Merkle paths.
 
-## Usage modes
+## Proof modes
 
-- **Per-member approvals:** each member proves one approval
-  (`required_threshold = 1`); the gate aggregates nullifiers and enforces the
-  threshold (`quorum approve --member i --proposal p`).
-- **Aggregated single proof (differentiator B3, shipped):** all M members'
-  approvals are proven in **one** proof (`required_threshold = M`) for a
-  single-tx path (`quorum approve-all --proposal p --members 0,1` / SDK
-  `Multisig::approve_many`).
+Individual mode proves one member at a time and lets the gate accumulate
+nullifiers. Aggregated mode proves several distinct approvals in one receipt.
+Both use the same guest and image ID.
 
-## Hashing
+## Hash domains
 
-All hashing matches LEZ semantics (`lez-compat`): commitments use the
-`/LEE/v0.3/Commitment/` prefix; Merkle leaves are `SHA256(commitment)`.
+Quorum membership and nullifiers use the domains defined in
+crates/quorum-core/src/nullifier.rs. The Merkle tree hashes commitment leaves
+and internal node pairs with SHA-256. This is separate from the LEZ account
+commitment format modeled by lez-compat.
 
-## Errors
+## Receipt verification
 
-`CircuitError` codes `3001`–`3008` (see `ERROR_CODES.md`). A failing guest aborts
-proof generation — the prover never produces a receipt for an invalid witness.
-
-## Proving stack
-
-Risc0 **3.0.5**, succinct proofs via `default_prover().prove_with_opts(..., &ProverOpts::succinct())`,
-strict `RISC0_DEV_MODE=0` enforcement in the prover (`ProverError::DevModeEnabled`).
+quorum-prover verifies generated receipts against the pinned image ID on the
+host. The SPEL guest calls env::verify for nested verification. A LEZ
+transaction composer must add the threshold receipt as an executor assumption;
+that integration is still pending.

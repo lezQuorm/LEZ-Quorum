@@ -12,6 +12,10 @@
 *.pem
 *.key
 .secrets/
+/quorum.json
+/member-*.json
+/rotation.json
+/claims/
 
 # Testnet evidence scratch
 /evidence/tmp/

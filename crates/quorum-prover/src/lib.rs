@@ -269,9 +269,9 @@ mod tests {
 
     #[test]
     fn pinned_image_id_matches_compiled_guest() {
-        // Guards the exact drift class that was once shipped: the on-chain gate
-        // verifies against quorum_image_id::THRESHOLD_IMAGE_ID, the prover
-        // against THRESHOLD_ID. If they ever diverge, every on-chain receipt is
+        // Guards against drift between the image verified by the on-chain gate
+        // and the compiled guest used by the prover. If they ever diverge,
+        // every on-chain receipt is
         // rejected. Refresh the pin with scripts/update-image-id.sh.
         assert_eq!(
             threshold_image_id(),

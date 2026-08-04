@@ -129,23 +129,6 @@
         }
       ],
       "name": "execute"
-    },
-    {
-      "accounts": [
-        {
-          "init": false,
-          "name": "proposal",
-          "signer": false,
-          "writable": true
-        }
-      ],
-      "args": [
-        {
-          "name": "proposal_id",
-          "type": "u64"
-        }
-      ],
-      "name": "reject"
     }
   ],
   "name": "quorum_gate",

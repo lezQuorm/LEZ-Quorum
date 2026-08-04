@@ -1,91 +1,118 @@
-# Quorum — Architecture
+# Architecture
+
+Quorum separates private approval proving from public policy enforcement. The
+same pure gate logic is used by the local SDK and the SPEL program, which keeps
+state-transition tests independent of network integration.
+
+~~~text
+member secrets
+     |
+     v
+quorum-cli / quorum-sdk
+     |
+     | ThresholdWitness
+     v
+quorum-threshold guest ---> Risc0 receipt + public journal
+                                      |
+                                      | transaction assumption (pending builder)
+                                      v
+                               quorum-gate SPEL
+                                      |
+                         +------------+-------------+
+                         |                          |
+                  constitution update       token chained call
+~~~
 
 ## Components
 
-```
-                        ┌──────────────────────────────┐
-                        │         quorum-cli         │  [Chunk 5]
-                        │  create / propose / approve  │
-                        │  rotate / execute / info     │
-                        └──────────────┬───────────────┘
-                                       │
-                        ┌──────────────▼───────────────┐
-                        │         quorum-sdk         │  [Chunk 5]
-                        │ proof-gen (client-side),     │
-                        │ state reads, resumable votes │
-                        └──────────────┬───────────────┘
-                                       │
-        ┌──────────────────────────────▼──────────────────────────────┐
-        │                 quorum-circuit (Risc0 guest)              │  [Chunk 3]
-        │  ONE aggregated proof: M distinct nullifiers, valid Merkle  │
-        │  paths in member_root, tier threshold + cap satisfied       │
-        └──────────────────────────────┬──────────────────────────────┘
-                                       │ receipt (SUCCINCT — recursion)
-        ┌──────────────────────────────▼──────────────────────────────┐
-        │               quorum-gate (SPEL program, LEZ)             │  [Chunk 4]
-        │  verifies receipt on-chain in a privacy-preserving tx,      │
-        │  updates nullifier set, gates the action (Transfer /        │
-        │  RotateMembers / ChangeThreshold)                           │
-        └──────────────────────────────┬──────────────────────────────┘
-                                       │
-                       ┌───────────────▼───────────────┐
-                       │   LEZ runtime (token, clock)  │
-                       └───────────────────────────────┘
-```
+### Client layer
 
-Supporting crates: `quorum-core` (domain model, this repo), `lez-compat`
-(LEZ v0.3 commitment/Merkle semantics), `quorum-image-id` (verifier
-constants), `quorum-prover` (host-side proving + off-chain receipt
-verification).
+**quorum-sdk** creates member sets, mirrors constitution and proposal state,
+builds Merkle witnesses, invokes the prover, and checks returned journals.
+**quorum-cli** persists the local mirror, private member files, proof artifacts,
+and replacement rotation bundles.
 
-## Data flow (2-of-3 treasury transfer)
+### Proof layer
 
-1. **Create** — deploy `quorum-gate`; initialize a Constitution: `threshold=2,
-   member_count=3, member_root=<Merkle root over member commitments>`, tiers.
-2. **Propose** — member builds a `Transfer { recipient, amount, tier_id }`
-   proposal (public action — per spec, only identity/vote are private).
-3. **Approve** — each member runs the circuit **client-side**, producing a
-   nullifier + a share of the aggregated threshold proof.
-4. **Verify & gate** — the receipt is submitted in a **privacy-preserving
-   transaction**; `quorum-gate` verifies it against the pinned circuit ID and
-   the current `member_root`, appends nullifiers, and on reaching the tier
-   threshold applies the gated action. A `Transfer` is **executed by chaining
-   into the treasury vault's token program** (`ChainedCall`): the gate marks
-   the proposal executed and emits the call, the vault holding is authorized
-   via its PDA seed, and the token program moves the funds — the gate never
-   handles balances itself.
-5. **Rotate** (Idea 02 differentiator) — a `RotateMembers` proposal swaps
-   `member_root` for a new one in the same verified transition. Old members'
-   nullifiers/keys become unprovable; a marker-PDA re-derived under the **old**
-   threshold lands on an **unclaimed** address — on-chain proof the old set is dead.
+**quorum-circuit** evaluates the threshold statement as pure Rust.
+**quorum-threshold** commits the resulting journal in a Risc0 guest.
+**quorum-prover** creates succinct receipts and verifies the pinned image ID on
+the host.
 
-## On-chain transfer execution
+The proof establishes that every supplied approval:
 
-A treasury `Transfer` is not executed by the gate directly (it owns no
-balances). On `Execute`, the SPEL guest:
+- derives from a secret committed under the active member root;
+- has a valid Merkle path;
+- produces a distinct nullifier for the proposal and constitution version;
+- contributes to the required threshold; and
+- approves an action that satisfies its circuit-level policy checks.
 
-1. Derives the treasury vault PDA seed: `SHA256("quorum/vault/v1" || multisig_id)`
-   (`quorum_gate_core::vault_pda_seed`) and rejects a caller-supplied vault that
-   is not this PDA (`GateError::InvalidVault`, 4012).
-2. Serializes `token_core::Instruction::Transfer` via a serde mirror
-   (`TokenTransferInstruction`; byte-identical under risc0 serde) with the
-   action's `amount`.
-3. Emits `ChainedCall { program_id: vault.program_owner, pre_states:
-   [vault(authorized), recipient], pda_seeds: [vault_seed] }` — the token
-   program moves `amount` from the vault holding to the recipient. Governance
-   actions (rotation / threshold change) emit no call.
+### Gate layer
 
-The vault account itself is created and funded as a deployment step (see
-`docs/DEPLOYMENT.md`); the gate only ever *authorizes* its movement.
+**quorum-gate-core** owns the serializable state and deterministic validation
+rules. **quorum-gate** is the SPEL guest that exposes initialize, propose,
+approve, and execute instructions.
 
-## Restart-safe approvals
+A constitution is bound to its multisig account ID. Every proposal is bound to
+that multisig ID and the exact constitution version at creation. Approval and
+execution reject cross-multisig proposals, stale proposals, mismatched
+instruction IDs, inflated tier caps, duplicate nullifiers, invalid vaults, and
+recipient substitution.
 
-The on-chain nullifier set is the source of truth. A member who approves and
-crashes re-reads program state and resumes; partial approvals (< M) are never
-lost because they are never stored only client-side.
+There is no unauthenticated reject instruction. Proposals leave the active
+state only through threshold-authorized execution.
 
-## Error contract
+### LEZ compatibility layer
 
-`QuorumError` (crates/quorum-core/src/error.rs) defines deterministic codes
-(`1001`–`1013`) shared by circuit, program, SDK, and CLI — satisfying the LP-0002
-reliability criterion.
+**lez-compat** models LEZ v0.3 account commitments, Merkle semantics, nonce
+progression, and owner stability. It is tested independently but is not yet
+connected to the Quorum membership witness. The current circuit proves
+knowledge of a Quorum member secret, not control of a live shielded LEZ
+account credential.
+
+## State
+
+The constitution stores:
+
+- owning multisig account ID;
+- constitution version and proposal counter;
+- default threshold and member count;
+- member commitment root; and
+- transfer tier thresholds and caps.
+
+A proposal stores:
+
+- owning multisig account ID;
+- proposal ID and constitution version;
+- action and required threshold;
+- accepted nullifiers; and
+- active or executed status.
+
+A rotation increments the constitution version and replaces the member root
+and count in one validated transition. Proposals created under the prior
+version become stale.
+
+## Transfer execution
+
+For transfer proposals, execute validates the runtime recipient against the
+approved recipient and derives the treasury vault PDA from the multisig ID.
+The gate then emits a token-program chained call with the vault authorized by
+its PDA seed. Rotation and threshold changes update constitution state without
+emitting a token call.
+
+## Receipt composition boundary
+
+The SPEL guest calls Risc0 env::verify with the pinned threshold image ID and
+journal. In nested Risc0 execution, that verifies an assumption supplied to the
+outer executor; it does not deserialize the receipt bytes in the instruction.
+
+A production transaction composer must therefore:
+
+1. decode and verify the client threshold receipt;
+2. bind its journal to the approve instruction;
+3. add the receipt to the SPEL executor assumptions; and
+4. submit the resulting LEZ transaction.
+
+That composer and its live sequencer test are pending. Until they exist, local
+gate tests demonstrate state rules but do not constitute end-to-end on-chain
+receipt verification.

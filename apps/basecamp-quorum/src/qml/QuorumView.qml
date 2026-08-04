@@ -276,6 +276,12 @@ Rectangle {
                              "--new-member-root", newRootField.text,
                              "--new-member-count", String(memberSpinner.value)])
                     }
+
+                    Button {
+                        text: "Activate replacement keys"
+                        enabled: root.ready && !(root.backend && root.backend.busy)
+                        onClicked: root.run("activate-rotation", ["activate-rotation"])
+                    }
                 }
             }
 

@@ -1,6 +1,6 @@
 [package]
 name = "quorum-gate-methods"
-description = "Embedded SPEL LEZ program that verifies Quorum threshold proofs on-chain (LP-0002)"
+description = "Embedded SPEL gate for Quorum threshold receipt assumptions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

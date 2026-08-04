@@ -31,8 +31,12 @@ pub const PROPOSAL_STATE_VERSION: u32 = 1;
 pub const NSSA_PDA_PREFIX: &[u8] = b"/NSSA/v0.2/AccountId/PDA/\x00\x00\x00\x00\x00\x00\x00";
 /// Marker seed domain.
 pub const MARKER_DOMAIN: &[u8] = b"quorum/marker/threshold/v1";
+/// Maximum supported members. This matches the threshold circuit bound.
+pub const MAX_MEMBERS: u8 = 10;
+/// Maximum supported spending tiers.
+pub const MAX_TIERS: usize = 8;
 
-/// A per-category spending policy (public by design — LP-0002 hides votes, not policy).
+/// A per-category spending policy. Policy is public by design.
 #[derive(
     Clone,
     Debug,
@@ -64,6 +68,8 @@ pub struct TierPolicy {
     borsh::BorshDeserialize,
 )]
 pub struct ConstitutionState {
+    /// Account id of the multisig that owns this constitution.
+    pub multisig_id: [u8; 32],
     /// Constitution version (increments on rotation / threshold change).
     pub version: u32,
     /// Default threshold M.
@@ -84,12 +90,14 @@ impl ConstitutionState {
     /// # Errors
     /// [`GateError::InvalidConstitution`] if the constitution violates invariants.
     pub fn new(
+        multisig_id: [u8; 32],
         threshold: u8,
         member_count: u8,
         member_root: [u8; 32],
         tiers: Vec<TierPolicy>,
     ) -> Result<Self, GateError> {
         let state = Self {
+            multisig_id,
             version: CONSTITUTION_STATE_VERSION,
             threshold,
             member_count,
@@ -106,17 +114,26 @@ impl ConstitutionState {
     /// # Errors
     /// [`GateError::InvalidConstitution`] if any invariant is violated.
     pub fn validate(&self) -> Result<(), GateError> {
-        if self.version == 0 {
+        if self.multisig_id == [0; 32] || self.version == 0 {
             return Err(GateError::InvalidConstitution);
         }
-        if self.threshold == 0 || self.threshold > self.member_count {
+        if self.threshold == 0
+            || self.threshold > self.member_count
+            || self.member_count > MAX_MEMBERS
+            || self.tiers.len() > MAX_TIERS
+        {
             return Err(GateError::InvalidConstitution);
         }
         if self.member_root == [0; 32] {
             return Err(GateError::InvalidConstitution);
         }
-        for tier in &self.tiers {
-            if tier.threshold == 0 || tier.threshold > self.member_count {
+        for (index, tier) in self.tiers.iter().enumerate() {
+            if tier.threshold == 0
+                || tier.threshold > self.member_count
+                || self.tiers[..index]
+                    .iter()
+                    .any(|previous| previous.id == tier.id)
+            {
                 return Err(GateError::InvalidConstitution);
             }
         }
@@ -152,7 +169,7 @@ impl ConstitutionState {
         }
     }
 
-    /// Applies a rotation (Idea 02): new root, version+1, atomic retirement.
+    /// Applies a rotation: new root, version increment, and atomic retirement.
     ///
     /// # Errors
     /// - [`GateError::NoopRotation`] if the root did not change.
@@ -166,13 +183,19 @@ impl ConstitutionState {
         if new_member_root == self.member_root {
             return Err(GateError::NoopRotation);
         }
-        if new_member_count < self.threshold {
+        if new_member_count < self.threshold || new_member_count > MAX_MEMBERS {
             return Err(GateError::RotationWouldBreakThreshold);
         }
-        self.version = self.version.saturating_add(1);
-        self.member_root = new_member_root;
-        self.member_count = new_member_count;
-        self.validate()
+        let mut next = self.clone();
+        next.version = self
+            .version
+            .checked_add(1)
+            .ok_or(GateError::InvalidConstitution)?;
+        next.member_root = new_member_root;
+        next.member_count = new_member_count;
+        next.validate()?;
+        *self = next;
+        Ok(())
     }
 
     /// Applies a threshold change.
@@ -184,7 +207,10 @@ impl ConstitutionState {
         if new_threshold == 0 || new_threshold > self.member_count {
             return Err(GateError::InvalidThresholdChange);
         }
-        self.version = self.version.saturating_add(1);
+        self.version = self
+            .version
+            .checked_add(1)
+            .ok_or(GateError::InvalidConstitution)?;
         self.threshold = new_threshold;
         Ok(())
     }
@@ -202,6 +228,8 @@ impl ConstitutionState {
     borsh::BorshDeserialize,
 )]
 pub struct ProposalState {
+    /// Multisig account this proposal belongs to.
+    pub multisig_id: [u8; 32],
     /// Proposal id.
     pub id: u64,
     /// Constitution version the proposal runs under.
@@ -233,15 +261,20 @@ pub enum ProposalStatus {
     Active,
     /// Threshold met and action applied.
     Executed,
-    /// Rejected.
-    Rejected,
 }
 
 impl ProposalState {
     /// Creates a new proposal bound to a constitution.
     #[must_use]
-    pub fn new(id: u64, constitution_version: u32, threshold: u8, action: ActionData) -> Self {
+    pub fn new(
+        multisig_id: [u8; 32],
+        id: u64,
+        constitution_version: u32,
+        threshold: u8,
+        action: ActionData,
+    ) -> Self {
         Self {
+            multisig_id,
             id,
             constitution_version,
             threshold,
@@ -317,8 +350,10 @@ impl From<&ThresholdJournal> for OnChainThresholdJournal {
     }
 }
 
-/// A claim submitted on-chain: the journal plus the receipt (verified via
-/// `env::verify` inside the SPEL guest against `THRESHOLD_IMAGE_ID`).
+/// Journal supplied to the on-chain approve instruction.
+///
+/// The matching Risc0 receipt is attached to the outer executor as an
+/// assumption; receipt bytes are not instruction data.
 #[derive(
     Clone,
     Debug,
@@ -332,8 +367,6 @@ impl From<&ThresholdJournal> for OnChainThresholdJournal {
 pub struct ThresholdClaim {
     /// The public journal committed by the client-side proof.
     pub journal: OnChainThresholdJournal,
-    /// Bincode-serialized Risc0 receipt.
-    pub receipt: Vec<u8>,
 }
 
 /// Result of validating a claim against a proposal (before receipt verify).
@@ -343,7 +376,7 @@ pub struct ClaimCheck {
     pub nullifiers: Vec<[u8; 32]>,
 }
 
-/// Deterministic gate errors (codes `4001`–`4011`).
+/// Deterministic gate errors (codes `4001`–`4016`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum GateError {
@@ -378,6 +411,14 @@ pub enum GateError {
     /// `PDA` for the multisig (a caller-supplied arbitrary sender is rejected
     /// before any transfer `ChainedCall` is emitted).
     InvalidVault = 4012,
+    /// Proposal belongs to a different multisig account.
+    ProposalBindingMismatch = 4013,
+    /// Proposal was created under an older constitution version.
+    StaleProposal = 4014,
+    /// Transfer recipient account does not match the approved action.
+    InvalidRecipient = 4015,
+    /// Instruction proposal id does not match the supplied proposal account.
+    ProposalIdMismatch = 4016,
 }
 
 impl GateError {
@@ -403,6 +444,10 @@ impl GateError {
             Self::StaleConstitution => "proof bound to a stale constitution",
             Self::TierCapMismatch => "journal tier cap does not match the constitution",
             Self::InvalidVault => "vault account is not the treasury PDA",
+            Self::ProposalBindingMismatch => "proposal belongs to a different multisig",
+            Self::StaleProposal => "proposal bound to a stale constitution",
+            Self::InvalidRecipient => "recipient account does not match the approved action",
+            Self::ProposalIdMismatch => "instruction proposal id does not match proposal state",
         }
     }
 }
@@ -428,11 +473,17 @@ pub fn check_claim(
     journal: &OnChainThresholdJournal,
 ) -> Result<ClaimCheck, GateError> {
     constitution.validate()?;
+    if proposal.multisig_id != constitution.multisig_id {
+        return Err(GateError::ProposalBindingMismatch);
+    }
     if proposal.status != ProposalStatus::Active {
         return Err(GateError::ProposalNotActive);
     }
     if journal.constitution_version != constitution.version {
         return Err(GateError::StaleConstitution);
+    }
+    if proposal.constitution_version != constitution.version {
+        return Err(GateError::StaleProposal);
     }
     if journal.member_root != constitution.member_root {
         return Err(GateError::JournalMismatch);
@@ -460,12 +511,18 @@ pub fn check_claim(
     }
     // Per-member approval proofs carry `required_threshold == 1`; the proposal
     // threshold is enforced on-chain by the aggregated nullifier count.
-    // Reject only degenerate proofs (circuit already forbids threshold 0).
-    if journal.required_threshold == 0 || journal.nullifiers.is_empty() {
+    let approval_count = usize::from(journal.approval_count);
+    if journal.required_threshold == 0
+        || approval_count == 0
+        || approval_count != journal.nullifiers.len()
+        || approval_count < usize::from(journal.required_threshold)
+    {
         return Err(GateError::ThresholdMismatch);
     }
-    for nullifier in &journal.nullifiers {
-        if proposal.nullifiers.contains(nullifier) {
+    for (index, nullifier) in journal.nullifiers.iter().enumerate() {
+        if proposal.nullifiers.contains(nullifier)
+            || journal.nullifiers[..index].contains(nullifier)
+        {
             return Err(GateError::DuplicateNullifier);
         }
     }
@@ -484,8 +541,40 @@ pub fn apply_approved_claim(
     proposal: &mut ProposalState,
     check: &ClaimCheck,
 ) -> Result<(), GateError> {
+    let mut next = proposal.clone();
     for nullifier in &check.nullifiers {
-        proposal.add_nullifier(*nullifier)?;
+        next.add_nullifier(*nullifier)?;
+    }
+    *proposal = next;
+    Ok(())
+}
+
+/// Validates an instruction's proposal id against the supplied proposal state.
+///
+/// # Errors
+/// [`GateError::ProposalIdMismatch`] if the ids differ.
+pub fn validate_proposal_id(proposal: &ProposalState, proposal_id: u64) -> Result<(), GateError> {
+    if proposal.id != proposal_id {
+        return Err(GateError::ProposalIdMismatch);
+    }
+    Ok(())
+}
+
+/// Validates that the runtime recipient matches the approved transfer action.
+///
+/// Governance actions do not use a recipient account and therefore pass this
+/// check unchanged.
+///
+/// # Errors
+/// [`GateError::InvalidRecipient`] if a transfer targets another account.
+pub fn validate_transfer_recipient(
+    proposal: &ProposalState,
+    recipient_id: &[u8; 32],
+) -> Result<(), GateError> {
+    if let ActionData::Transfer { recipient, .. } = &proposal.action {
+        if recipient != recipient_id {
+            return Err(GateError::InvalidRecipient);
+        }
     }
     Ok(())
 }
@@ -503,6 +592,13 @@ pub fn apply_action(
     constitution: &mut ConstitutionState,
     proposal: &ProposalState,
 ) -> Result<(), GateError> {
+    constitution.validate()?;
+    if proposal.multisig_id != constitution.multisig_id {
+        return Err(GateError::ProposalBindingMismatch);
+    }
+    if proposal.constitution_version != constitution.version {
+        return Err(GateError::StaleProposal);
+    }
     if !proposal.threshold_met() {
         return Err(GateError::ProposalNotActive);
     }
@@ -597,11 +693,6 @@ pub enum QuorumInstruction {
         /// Target proposal id.
         proposal_id: u64,
     },
-    /// Rejects a proposal.
-    Reject {
-        /// Target proposal id.
-        proposal_id: u64,
-    },
 }
 
 /// Derives the marker PDA that proves *on-chain* what the gate demanded.
@@ -688,6 +779,7 @@ mod tests {
         let commitments: Vec<[u8; 32]> = secrets(3).iter().map(member_commitment).collect();
         let root = MemberTree::new(&commitments).root();
         ConstitutionState::new(
+            [7; 32],
             2,
             3,
             root,
@@ -737,7 +829,7 @@ mod tests {
     #[test]
     fn approve_then_threshold_met() {
         let c = constitution();
-        let mut proposal = ProposalState::new(1, c.version, 2, transfer_action());
+        let mut proposal = ProposalState::new(c.multisig_id, 1, c.version, 2, transfer_action());
         let (_, j) = witness();
         let claim = OnChainThresholdJournal::from(&j);
         let check = check_claim(&c, &proposal, &claim).unwrap();
@@ -775,7 +867,7 @@ mod tests {
     #[test]
     fn duplicate_nullifier_rejected() {
         let c = constitution();
-        let mut proposal = ProposalState::new(1, c.version, 2, transfer_action());
+        let mut proposal = ProposalState::new(c.multisig_id, 1, c.version, 2, transfer_action());
         let (_, j) = witness();
         let check = check_claim(&c, &proposal, &OnChainThresholdJournal::from(&j)).unwrap();
         apply_approved_claim(&mut proposal, &check).unwrap();
@@ -787,7 +879,7 @@ mod tests {
     #[test]
     fn stale_constitution_rejected() {
         let mut c = constitution();
-        let mut proposal = ProposalState::new(1, c.version, 2, transfer_action());
+        let mut proposal = ProposalState::new(c.multisig_id, 1, c.version, 2, transfer_action());
         let (_, j) = witness();
         // Rotate the constitution — the proof is now stale.
         let secrets = secrets(4);
@@ -811,6 +903,7 @@ mod tests {
             MemberTree::new(&commitments).root()
         };
         let mut proposal = ProposalState::new(
+            c.multisig_id,
             1,
             c.version,
             c.threshold,
@@ -848,7 +941,7 @@ mod tests {
             tier_id: 1,
             tier_max_amount: 1_000_000,
         };
-        let proposal = ProposalState::new(1, c.version, 2, inflated_action);
+        let proposal = ProposalState::new(c.multisig_id, 1, c.version, 2, inflated_action);
         let (_, j) = witness();
         let mut inflated = OnChainThresholdJournal::from(&j);
         if let ActionData::Transfer {
@@ -885,5 +978,113 @@ mod tests {
             json,
             serde_json::json!({"Transfer": {"amount_to_transfer": 500}})
         );
+    }
+
+    #[test]
+    fn cross_multisig_proposal_is_rejected() {
+        let mut c = constitution();
+        let mut proposal = ProposalState::new([8; 32], 1, c.version, 2, transfer_action());
+        proposal.nullifiers = vec![[1; 32], [2; 32]];
+        let (_, journal) = witness();
+        assert_eq!(
+            check_claim(&c, &proposal, &OnChainThresholdJournal::from(&journal)),
+            Err(GateError::ProposalBindingMismatch)
+        );
+        assert_eq!(
+            apply_action(&mut c, &proposal),
+            Err(GateError::ProposalBindingMismatch)
+        );
+    }
+
+    #[test]
+    fn stale_proposal_cannot_collect_current_votes_or_execute() {
+        let mut c = constitution();
+        let mut proposal = ProposalState::new(c.multisig_id, 1, c.version, 2, transfer_action());
+        proposal.nullifiers = vec![[1; 32], [2; 32]];
+        let (_, journal) = witness();
+        let commitments: Vec<[u8; 32]> = secrets(4).iter().map(member_commitment).collect();
+        c.rotate(MemberTree::new(&commitments).root(), 4).unwrap();
+        let mut current = OnChainThresholdJournal::from(&journal);
+        current.member_root = c.member_root;
+        current.constitution_version = c.version;
+        assert_eq!(
+            check_claim(&c, &proposal, &current),
+            Err(GateError::StaleProposal)
+        );
+        assert_eq!(
+            apply_action(&mut c, &proposal),
+            Err(GateError::StaleProposal)
+        );
+    }
+
+    #[test]
+    fn transfer_recipient_and_instruction_id_are_bound() {
+        let c = constitution();
+        let proposal = ProposalState::new(c.multisig_id, 1, c.version, 2, transfer_action());
+        assert!(validate_transfer_recipient(&proposal, &[9; 32]).is_ok());
+        assert_eq!(
+            validate_transfer_recipient(&proposal, &[8; 32]),
+            Err(GateError::InvalidRecipient)
+        );
+        assert!(validate_proposal_id(&proposal, 1).is_ok());
+        assert_eq!(
+            validate_proposal_id(&proposal, 2),
+            Err(GateError::ProposalIdMismatch)
+        );
+    }
+
+    #[test]
+    fn constitution_limits_and_tier_ids_are_enforced() {
+        let mut c = constitution();
+        c.member_count = MAX_MEMBERS + 1;
+        assert_eq!(c.validate(), Err(GateError::InvalidConstitution));
+        c = constitution();
+        let duplicate = c.tiers[0].clone();
+        c.tiers.push(duplicate);
+        assert_eq!(c.validate(), Err(GateError::InvalidConstitution));
+        c.tiers.pop();
+        c.tiers[0].id = u8::MAX;
+        assert!(c.validate().is_ok());
+    }
+
+    #[test]
+    fn malformed_claim_is_rejected_without_partial_mutation() {
+        let c = constitution();
+        let mut proposal = ProposalState::new(c.multisig_id, 1, c.version, 2, transfer_action());
+        let (_, journal) = witness();
+        let mut malformed = OnChainThresholdJournal::from(&journal);
+        malformed.approval_count = 0;
+        assert_eq!(
+            check_claim(&c, &proposal, &malformed),
+            Err(GateError::ThresholdMismatch)
+        );
+
+        malformed.approval_count = 2;
+        malformed.nullifiers.push(malformed.nullifiers[0]);
+        assert_eq!(
+            check_claim(&c, &proposal, &malformed),
+            Err(GateError::DuplicateNullifier)
+        );
+
+        let before = proposal.clone();
+        let check = ClaimCheck {
+            nullifiers: vec![[1; 32], [1; 32]],
+        };
+        assert_eq!(
+            apply_approved_claim(&mut proposal, &check),
+            Err(GateError::DuplicateNullifier)
+        );
+        assert_eq!(proposal, before);
+    }
+
+    #[test]
+    fn failed_rotation_does_not_mutate_constitution() {
+        let mut c = constitution();
+        c.tiers[0].threshold = 3;
+        let before = c.clone();
+        let commitments: Vec<[u8; 32]> = secrets(2).iter().map(member_commitment).collect();
+        let new_root = MemberTree::new(&commitments).root();
+        assert_eq!(c.rotate(new_root, 2), Err(GateError::InvalidConstitution));
+        assert_eq!(c, before);
     }
 }

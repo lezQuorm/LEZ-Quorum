@@ -12,7 +12,7 @@
 //! quorum approve --member 1 --proposal 0
 //! quorum execute --proposal 0
 //! quorum info
-//! # Aggregated single-proof mode (B3): M approvals in ONE receipt
+//! # Aggregated mode: M approvals in one receipt
 //! quorum approve-all --proposal 0 --members 0,1
 //! ```
 
@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 const STATE_FILE: &str = "quorum.json";
 const MEMBER_FILE_PREFIX: &str = "member-";
 const CLAIMS_DIR: &str = "claims";
+const ROTATION_FILE: &str = "rotation.json";
 
 /// The local state file: multisig mirror + member commitments + secrets.
 /// Permissions are forced to 0600 — never commit this file.
@@ -36,11 +37,20 @@ struct QuorumFile {
     commitments: Vec<[u8; 32]>,
 }
 
+/// A pending replacement member set. This file contains secrets and must stay
+/// private until operators distribute the replacement keys.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RotationFile {
+    root: [u8; 32],
+    commitments: Vec<[u8; 32]>,
+    secrets: Vec<[u8; 32]>,
+}
+
 #[derive(Parser)]
 #[command(
     name = "quorum",
     version,
-    about = "Private M-of-N multisig for LEZ (LP-0002)"
+    about = "Private threshold treasury for the Logos Execution Zone"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -94,7 +104,7 @@ enum Command {
         #[arg(long)]
         proposal: u64,
     },
-    /// Generate ONE aggregated threshold proof for several members (B3:
+    /// Generate one aggregated threshold proof for several members (
     /// M distinct approvals in a single receipt, single on-chain claim).
     ApproveAll {
         /// Proposal id.
@@ -110,20 +120,16 @@ enum Command {
         #[arg(long)]
         proposal: u64,
     },
-    /// Reject a proposal.
-    Reject {
-        /// Proposal id.
-        #[arg(long)]
-        proposal: u64,
-    },
     /// Print the current state.
     Info,
-    /// Print the member root for a freshly generated member set (rotation helper).
+    /// Generate a private replacement member bundle and print its root.
     NewRoot {
         /// Number of members in the new set.
         #[arg(long)]
         members: usize,
     },
+    /// Activate rotation.json after its root becomes the active constitution root.
+    ActivateRotation,
 }
 
 fn main() {
@@ -161,17 +167,62 @@ fn run() -> Result<(), String> {
         Command::Approve { member, proposal } => approve(member, proposal),
         Command::ApproveAll { proposal, members } => approve_all(proposal, &members),
         Command::Execute { proposal } => execute(proposal),
-        Command::Reject { proposal } => reject(proposal),
         Command::Info => info(),
-        Command::NewRoot { members } => {
-            if members == 0 || members > 10 {
-                return Err("member count must be 1..=10".into());
-            }
-            let set = MemberSet::generate(members);
-            println!("{}", hex(&set.root));
-            Ok(())
-        }
+        Command::NewRoot { members } => new_root(members),
+        Command::ActivateRotation => activate_rotation(),
     }
+}
+
+fn new_root(members: usize) -> Result<(), String> {
+    if members == 0 || members > 10 {
+        return Err("member count must be 1..=10".into());
+    }
+    let set = MemberSet::generate(members);
+    let rotation = RotationFile {
+        root: set.root,
+        commitments: set.members.iter().map(Member::commitment).collect(),
+        secrets: set.members.iter().map(|member| member.secret).collect(),
+    };
+    let json = serde_json::to_vec_pretty(&rotation).map_err(|e| e.to_string())?;
+    write_private(Path::new(ROTATION_FILE), &json)?;
+    println!("{}", hex(&set.root));
+    Ok(())
+}
+
+fn activate_rotation() -> Result<(), String> {
+    let mut state = load_state()?;
+    let bytes =
+        std::fs::read(ROTATION_FILE).map_err(|e| format!("cannot read {ROTATION_FILE}: {e}"))?;
+    let rotation: RotationFile =
+        serde_json::from_slice(&bytes).map_err(|e| format!("cannot parse {ROTATION_FILE}: {e}"))?;
+    let derived = MemberSet::from_secrets(&rotation.secrets);
+    let derived_commitments: Vec<[u8; 32]> =
+        derived.members.iter().map(Member::commitment).collect();
+
+    if derived.root != rotation.root || derived_commitments != rotation.commitments {
+        return Err("rotation bundle failed its commitment integrity check".into());
+    }
+    if rotation.root != state.multisig.constitution.member_root {
+        return Err("rotation bundle root is not the active constitution root".into());
+    }
+    if rotation.secrets.len() != usize::from(state.multisig.constitution.member_count) {
+        return Err("rotation bundle member count does not match the constitution".into());
+    }
+
+    for (index, secret) in rotation.secrets.iter().enumerate() {
+        write_secret(index, secret)?;
+    }
+    for index in rotation.secrets.len()..state.commitments.len() {
+        remove_secret(index)?;
+    }
+    state.commitments = rotation.commitments;
+    write_state(&state)?;
+    println!(
+        "activated {} replacement members for constitution v{}",
+        rotation.secrets.len(),
+        state.multisig.constitution.version
+    );
+    Ok(())
 }
 
 fn create(threshold: u8, members: usize, tiers: Option<&str>) -> Result<(), String> {
@@ -328,17 +379,6 @@ fn execute(proposal_id: u64) -> Result<(), String> {
     Ok(())
 }
 
-fn reject(proposal_id: u64) -> Result<(), String> {
-    let mut state = load_state()?;
-    state
-        .multisig
-        .reject(proposal_id)
-        .map_err(|e| e.to_string())?;
-    write_state(&state)?;
-    println!("proposal {proposal_id} rejected");
-    Ok(())
-}
-
 fn info() -> Result<(), String> {
     let state = load_state()?;
     let c = &state.multisig.constitution;
@@ -392,6 +432,15 @@ fn load_secret(index: usize) -> Result<[u8; 32], String> {
     let path = PathBuf::from(format!("{MEMBER_FILE_PREFIX}{index}.json"));
     let bytes = std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     serde_json::from_slice(&bytes).map_err(|e| format!("cannot parse {}: {e}", path.display()))
+}
+
+fn remove_secret(index: usize) -> Result<(), String> {
+    let path = PathBuf::from(format!("{MEMBER_FILE_PREFIX}{index}.json"));
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("cannot remove {}: {error}", path.display())),
+    }
 }
 
 fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {

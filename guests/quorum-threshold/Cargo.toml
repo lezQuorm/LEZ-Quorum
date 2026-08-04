@@ -1,6 +1,6 @@
 [package]
 name = "quorum-threshold-methods"
-description = "Embedded Risc0 guest image for Quorum threshold proofs (LP-0002)"
+description = "Embedded Risc0 guest image for Quorum threshold proofs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

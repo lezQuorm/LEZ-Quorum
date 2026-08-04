@@ -1,54 +1,70 @@
-# Quorum — Privacy Model
+# Privacy Model
 
-## What is hidden
+Quorum aims to hide membership identities and approval attribution while
+keeping treasury policy and execution auditable. This document describes the
+current prototype, including what it does not yet prove.
 
-| Surface | Leak in the public PoC | Leak in Quorum |
-|---|---|---|
-| Member set | Full member list on-chain | A **Merkle root** over member commitments only |
-| Votes | Each approval attributed to a member | A **nullifier set** — reveals nothing about identity |
-| Membership changes | Org chart published | A new root; observers can't even tell the set changed |
-| Approval timing | Linked to a member's tx | Submitted in **privacy-preserving transactions** (sender hidden by LEZ) |
-| Member secrets | — | Never leave the member's device; only commitments/nullifiers ever appear |
+## Hidden by the threshold proof
 
-## How it's achieved
+- Member secrets.
+- Merkle leaf positions and authentication paths.
+- The plaintext member commitment list.
+- Which committed member produced each nullifier.
 
-- **Shielded membership.** Each member commits to an identity secret:
-  `member_commitment = H("quorum/v1/member" ‖ secret)`. The multisig stores only
-  `member_root = MerkleRoot(member_commitments)`. Membership is proven in-ZK with a
-  Merkle path (`quorum-circuit`), so no plaintext member list exists anywhere on-chain.
+The constitution stores only a Merkle root over Quorum member commitments. A
+proof shows that distinct secrets belong to that root and derives one public
+nullifier per approval.
 
-- **Anonymous approval.** A member's approval is a Risc0 proof that their commitment
-  is in the root and that their **nullifier** is correctly derived:
-  `nullifier = H("quorum/v1/nullifier" ‖ secret ‖ proposal_id ‖ version)`. The
-  nullifier is public (it must be, for double-vote prevention) but is a one-way
-  hash of the secret — unlinkable to the member.
+## Public by design
 
-- **On-chain sees only "threshold reached".** The gate aggregates nullifiers and
-  exposes `approvals = n/ threshold`. It never records *who* approved. Per LP-0002,
-  the proposed *action* is public by design — only identity and vote are private.
+- Multisig account ID.
+- Constitution version, threshold, member count, member root, and spending
+  tiers.
+- Proposal ID, action, recipient, amount, tier, and status.
+- Required threshold, approval count, and accepted nullifiers.
+- Rotation and threshold-change actions.
 
-- **Evolving anonymity (rotation).** Rotation replaces `member_root`. Because a
-  removed member's commitment is no longer in the tree, their key is provably dead
-  (no valid Merkle path), and no on-chain artifact ties the change to a person.
+A rotation is observable: the action, member root, member count, and
+constitution version change publicly. Observers cannot derive the member
+identities or map old members to new members from those values alone, but the
+implementation does not claim that a rotation is undetectable.
 
-## What is public (by design)
+## Nullifier behavior
 
-- Constitution: threshold, member count, tier limits, `member_root`.
-- Proposal: id, action, nullifier set, status.
-- Proof: journal (member_root, proposal_id, version, threshold, nullifiers, action).
+A nullifier is derived from the member secret, proposal ID, and constitution
+version. The same member produces a different value across proposals or
+constitution versions. Reusing the same approval for one proposal produces the
+same nullifier and is rejected.
 
-## Unlinkability guarantees
+Nullifiers prevent duplicate approval; they do not hide proposal timing or the
+number of approvals submitted.
 
-1. A nullifier is derived from the secret + proposal id: the same member produces
-   a **different** nullifier per proposal (tested in `quorum-circuit`).
-2. Approvals travel in private LEZ transactions: the submitter's account is hidden
-   by the protocol.
-3. Membership proofs reveal only "a path exists to `member_root`" — not which leaf.
+## Transaction privacy
 
-## Model summary
+Approval attribution also depends on the privacy properties of the LEZ
+transaction carrying the claim. The repository does not yet include the live
+transaction composer or testnet evidence, so sender unlinkability has not been
+demonstrated end to end.
 
-```
-member secret ──► member commitment ──► member_root (public, shielded set)
-      │                                              │
-      └──► nullifier (public, identity-free) ──► gate aggregates → threshold
-```
+## Credential boundary
+
+The current membership secret is a Quorum-specific random value. It is not yet
+bound to control of a live shielded LEZ account. lez-compat provides the
+account commitment model needed for that work, but it is currently isolated
+from the threshold circuit.
+
+## Summary
+
+~~~text
+private member secret
+        |
+        +--> member commitment --> Merkle root (public)
+        |
+        +--> proposal-bound nullifier (public)
+                                      |
+                                      +--> threshold state (public)
+~~~
+
+The privacy claim relies on SHA-256 preimage resistance, Risc0 proof soundness,
+correct transaction composition, secure member-secret handling, and the
+privacy guarantees of the eventual LEZ submission path.

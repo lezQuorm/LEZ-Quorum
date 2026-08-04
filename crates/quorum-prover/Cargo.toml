@@ -1,6 +1,6 @@
 [package]
 name = "quorum-prover"
-description = "Host-side Risc0 prover and verifier for Quorum threshold proofs (LP-0002)"
+description = "Host-side Risc0 prover and verifier for Quorum threshold proofs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,35 +1,17 @@
-//! # Quorum core — private M-of-N multisig domain model for LEZ
+//! # Quorum core
 //!
-//! Quorum is a private M-of-N multisig primitive for the Logos Execution
-//! Zone (LEZ), submitted for λPrize **LP-0002**.
+//! Domain types and validation rules for a private threshold treasury on the
+//! Logos Execution Zone.
 //!
-//! ## Privacy properties
+//! Quorum commits the member set as one Merkle root, represents approvals with
+//! proposal-bound nullifiers, and supports tiered transfers, member rotation,
+//! and threshold changes. Member secrets and Merkle paths remain private;
+//! policies, proposal actions, nullifiers, roots, versions, and rotations are
+//! public by design.
 //!
-//! Unlike the public `lez-multisig` `PoC` (which requires fresh zero-nonce
-//! keypairs claimed by the program — impossible for shielded accounts),
-//! Quorum is built around **shielded member accounts**:
-//!
-//! - **No member list on-chain.** The member set is stored only as a Merkle
-//!   **root** over per-member identity commitments. An observer cannot tell
-//!   who is in the set, or even *whether* the set changed.
-//! - **No votes on-chain.** Approvals are expressed as ZK threshold proofs
-//!   (built in `quorum-circuit`); the on-chain verifier learns only that a
-//!   threshold of distinct, valid members approved.
-//! - **Double-vote prevention.** A member's approval binds to the proposal via
-//!   a domain-separated **nullifier**; the program rejects duplicate nullifiers.
-//! - **Evolving membership (rotation).** Adding/removing members produces a new
-//!   commitment root. Revocation is atomic: the old root is retired in the same
-//!   state transition, so a removed member's key is provably dead.
-//! - **Tiered spending.** Per-category thresholds and amount caps, with category
-//!   labels stored only as commitments.
-//!
-//! ## Restart-safe state
-//!
-//! The on-chain nullifier set is the source of truth for partial approvals.
-//! A client that crashes after submitting < M approvals re-reads program state
-//! on restart and resumes — nothing lives only in client memory.
-//!
-//! [`lez-multisig`]: https://github.com/jimmy-claw/lez-multisig
+//! This crate is network-independent. Live shielded-account credential binding
+//! and LEZ transaction composition are integration responsibilities documented
+//! at the workspace level.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

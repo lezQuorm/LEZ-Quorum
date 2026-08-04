@@ -158,7 +158,7 @@ pub fn sha256(data: &[u8]) -> Digest32 {
     Sha256::digest(data).into()
 }
 
-/// Shielded-account validation rules (LP-0002 write-up requirement W5).
+/// Shielded-account validation rules used by LEZ compatibility checks.
 ///
 /// The public `lez-multisig` `PoC` requires *fresh zero-nonce keypairs claimed by
 /// the multisig program*; shielded accounts cannot satisfy that because the
@@ -169,7 +169,7 @@ pub fn sha256(data: &[u8]) -> Digest32 {
 pub mod rules {
     use serde::{Deserialize, Serialize};
 
-    /// Deterministic validation-rule errors (LP-0002 reliability criterion).
+    /// Deterministic validation-rule errors.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub enum RuleError {

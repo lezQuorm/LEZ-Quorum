@@ -1,6 +1,6 @@
 [package]
 name = "quorum-circuit"
-description = "Pure Quorum threshold statement evaluated inside the Risc0 guest (LP-0002)"
+description = "Pure Quorum threshold statement evaluated by the Risc0 guest"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

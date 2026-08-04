@@ -1,8 +1,7 @@
 //! Deterministic error contract for Quorum.
 //!
-//! LP-0002 requires *"deterministic, documented error codes for all
-//! invalid-proof and double-vote scenarios"*. These codes are the contract
-//! shared by the ZK verifier, the LEZ program, the SDK, and the CLI.
+//! These stable codes are shared by the domain model, SDK, CLI, and validation
+//! tests.
 
 use core::fmt;
 

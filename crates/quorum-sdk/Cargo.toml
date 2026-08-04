@@ -1,6 +1,6 @@
 [package]
 name = "quorum-sdk"
-description = "Client-side Quorum toolkit: member sets, proposal lifecycle, approval proofs (LP-0002)"
+description = "Client-side Quorum member, proposal, and proof toolkit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

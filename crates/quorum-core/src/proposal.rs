@@ -2,7 +2,7 @@
 //!
 //! A proposal accumulates **nullifiers** (one per approving member) rather than
 //! identities. The on-chain verifier only ever sees the nullifier set; the ZK
-//! circuit (Chunk 3) proves the nullifiers are real, distinct, and bound to
+//! threshold circuit proves the nullifiers are real, distinct, and bound to
 //! members of the current member root.
 
 use crate::{AccountId, Commitment, Constitution, Nullifier, QuorumError, Result};
@@ -19,7 +19,7 @@ pub enum ProposalKind {
         /// Spending tier governing threshold + cap.
         tier_id: u8,
     },
-    /// Shielded member-set rotation (the Idea 02 differentiator).
+    /// Private member-set rotation.
     RotateMembers {
         /// New Merkle root over the new member commitments.
         new_member_root: Commitment,

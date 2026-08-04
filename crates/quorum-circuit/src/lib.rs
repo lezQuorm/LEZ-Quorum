@@ -23,7 +23,7 @@ pub type Digest32 = [u8; 32];
 /// Hard cap on approvals per proof (matches `MAX_MEMBERS`).
 pub const MAX_APPROVALS: usize = 10;
 
-/// The proposed action (public by design — LP-0002 hides identity/vote, not content).
+/// The proposed action. Action contents are public by design.
 #[derive(
     Clone,
     Debug,

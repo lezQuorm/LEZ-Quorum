@@ -1,6 +1,6 @@
 [package]
 name = "quorum-cli"
-description = "Quorum CLI: create, propose, approve (client-side proofs), execute, rotate (LP-0002)"
+description = "Offline-first CLI for Quorum treasury operations"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

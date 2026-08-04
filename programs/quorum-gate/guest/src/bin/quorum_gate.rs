@@ -2,8 +2,9 @@
 
 use quorum_gate_core::{
     apply_action, apply_approved_claim, check_claim, decode_constitution, decode_proposal,
-    encode_constitution, encode_proposal, ActionData, ConstitutionState, GateError,
-    ProposalState, ProposalStatus, ThresholdClaim, THRESHOLD_IMAGE_ID,
+    encode_constitution, encode_proposal, validate_proposal_id, validate_transfer_recipient,
+    ActionData, ConstitutionState, GateError, ProposalState, ProposalStatus, ThresholdClaim,
+    THRESHOLD_IMAGE_ID,
 };
 use nssa_core::{
     account::{AccountId, AccountWithMetadata},
@@ -28,8 +29,14 @@ mod quorum_gate {
         member_root: [u8; 32],
         tiers: Vec<quorum_gate_core::TierPolicy>,
     ) -> SpelResult {
-        let state = ConstitutionState::new(threshold, member_count, member_root, tiers)
-            .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
+        let state = ConstitutionState::new(
+            *multisig.account_id.value(),
+            threshold,
+            member_count,
+            member_root,
+            tiers,
+        )
+        .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
         multisig.account.data = encode_constitution(&state)
             .unwrap_or_else(|_| fail(2005, "cannot encode constitution state"))
             .try_into()
@@ -53,6 +60,12 @@ mod quorum_gate {
         let mut constitution = decode_constitution(&multisig.account.data)
             .unwrap_or_else(|_| fail(2005, "cannot decode constitution state"));
         constitution.validate().unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
+        if constitution.multisig_id != *multisig.account_id.value() {
+            fail(
+                GateError::ProposalBindingMismatch.code() as u16,
+                &GateError::ProposalBindingMismatch.to_string(),
+            );
+        }
 
         // The tier amount cap is constitution policy: re-derive it from on-chain
         // tier state so a caller can never store an inflated cap in the proposal.
@@ -80,13 +93,22 @@ mod quorum_gate {
             .required_threshold(&action)
             .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
         let id = constitution.proposal_counter;
-        let state = ProposalState::new(id, constitution.version, threshold, action);
+        let state = ProposalState::new(
+            constitution.multisig_id,
+            id,
+            constitution.version,
+            threshold,
+            action,
+        );
         proposal.account.data = encode_proposal(&state)
             .unwrap_or_else(|_| fail(2005, "cannot encode proposal state"))
             .try_into()
             .unwrap_or_else(|_| fail(2005, "proposal state is too large"));
 
-        constitution.proposal_counter = constitution.proposal_counter.saturating_add(1);
+        constitution.proposal_counter = constitution
+            .proposal_counter
+            .checked_add(1)
+            .unwrap_or_else(|| fail(4001, "proposal counter overflow"));
         multisig.account.data = encode_constitution(&constitution)
             .unwrap_or_else(|_| fail(2005, "cannot encode constitution state"))
             .try_into()
@@ -109,21 +131,22 @@ mod quorum_gate {
         proposal_id: u64,
         claim: ThresholdClaim,
     ) -> SpelResult {
-        let _ = proposal_id; // the account is authoritative; id kept for macro dispatch
         let constitution = decode_constitution(&multisig.account.data)
             .unwrap_or_else(|_| fail(2005, "cannot decode constitution state"));
         let mut state = decode_proposal(&proposal.account.data)
             .unwrap_or_else(|_| fail(2005, "cannot decode proposal state"));
-
-        // Bind the claim to this program and proposal, then verify the client
-        // receipt ON-CHAIN against the pinned threshold-guest image ID.
-        let journal_words = to_vec(&claim.journal)
-            .unwrap_or_else(|_| fail(1011, "cannot encode threshold journal"));
-        env::verify(THRESHOLD_IMAGE_ID, &journal_words)
-            .expect("Risc0 receipt verification is infallible inside the guest");
+        validate_proposal_id(&state, proposal_id)
+            .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
 
         let check = check_claim(&constitution, &state, &claim.journal)
             .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
+
+        // The outer executor must attach the matching threshold receipt as an
+        // assumption. env::verify binds that assumption to this image and journal.
+        let journal_words = to_vec(&claim.journal)
+            .unwrap_or_else(|_| fail(1011, "cannot encode threshold journal"));
+        env::verify(THRESHOLD_IMAGE_ID, &journal_words)
+            .expect("Risc0 receipt assumption verification failed");
         apply_approved_claim(&mut state, &check)
             .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
 
@@ -146,11 +169,14 @@ mod quorum_gate {
         #[account(mut)] recipient: AccountWithMetadata,
         proposal_id: u64,
     ) -> SpelResult {
-        let _ = proposal_id;
         let mut constitution = decode_constitution(&multisig.account.data)
             .unwrap_or_else(|_| fail(2005, "cannot decode constitution state"));
         let mut state = decode_proposal(&proposal.account.data)
             .unwrap_or_else(|_| fail(2005, "cannot decode proposal state"));
+        validate_proposal_id(&state, proposal_id)
+            .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
+        validate_transfer_recipient(&state, recipient.account_id.value())
+            .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
 
         if !state.threshold_met() {
             fail(4004, "proposal threshold not met");
@@ -203,28 +229,6 @@ mod quorum_gate {
         Ok(output)
     }
 
-    #[instruction]
-    pub fn reject(
-        _ctx: ProgramContext,
-        #[account(mut, owner = self_program_id)] mut proposal: AccountWithMetadata,
-        proposal_id: u64,
-    ) -> SpelResult {
-        let _ = proposal_id;
-        let mut state = decode_proposal(&proposal.account.data)
-            .unwrap_or_else(|_| fail(2005, "cannot decode proposal state"));
-        if state.status != ProposalStatus::Active {
-            fail(4004, "proposal is not active");
-        }
-        state.status = ProposalStatus::Rejected;
-        proposal.account.data = encode_proposal(&state)
-            .unwrap_or_else(|_| fail(2005, "cannot encode proposal state"))
-            .try_into()
-            .unwrap_or_else(|_| fail(2005, "proposal state is too large"));
-
-        let mut output = SpelOutput::empty();
-        output.post_states = vec![AccountPostState::new(proposal.account)];
-        Ok(output)
-    }
 }
 
 fn fail(code: u16, message: &str) -> ! {

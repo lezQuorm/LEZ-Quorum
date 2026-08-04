@@ -1,6 +1,6 @@
 [package]
 name = "quorum-core"
-description = "Quorum — private M-of-N multisig domain model for LEZ (LP-0002)"
+description = "Private threshold treasury domain model for LEZ"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

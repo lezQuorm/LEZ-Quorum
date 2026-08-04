@@ -1,6 +1,6 @@
 [package]
 name = "lez-compat"
-description = "LEZ v0.3 compatibility: shielded-account commitments, Merkle membership, validation rules (LP-0002)"
+description = "LEZ v0.3 account commitment and validation compatibility model"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -46,6 +46,9 @@ pub enum SdkError {
     /// Member index out of range.
     #[error("member index {0} out of range")]
     MemberOutOfRange(usize),
+    /// Member secret is not committed in the active member set.
+    #[error("member is not in the active member set")]
+    MemberNotInSet,
     /// An approval proof was bound to a different proposal.
     #[error("proof proposal mismatch")]
     ProofProposalMismatch,
@@ -123,15 +126,14 @@ impl MemberSet {
 
     /// Builds a membership-proven approval witness for `member`.
     ///
-    /// # Panics
-    /// If `member` is not part of `self` (its commitment is not a leaf).
-    #[must_use]
+    /// # Errors
+    /// [`SdkError::MemberNotInSet`] if `member` is not part of this set.
     pub fn approval_witness(
         &self,
         member: &Member,
         _proposal_id: u64,
         _constitution_version: u32,
-    ) -> MemberApprovalWitness {
+    ) -> Result<MemberApprovalWitness, SdkError> {
         let proof = MemberTree::new(
             &self
                 .members
@@ -140,35 +142,36 @@ impl MemberSet {
                 .collect::<Vec<_>>(),
         )
         .proof_for(&member.commitment())
-        .expect("member is in the set");
-        MemberApprovalWitness {
+        .ok_or(SdkError::MemberNotInSet)?;
+        Ok(MemberApprovalWitness {
             member_secret: member.secret,
             leaf_index: proof.leaf_index,
             siblings: proof.siblings,
-        }
+        })
     }
 }
 
 /// Builds an approval witness from a member set's commitments and one member's
 /// secret (the CLI stores only commitments + each member's own secret file).
 ///
-/// # Panics
-/// If `member_secret` is not committed in `commitments`.
-#[must_use]
+/// # Errors
+/// [`SdkError::MemberNotInSet`] if the secret is not committed in the set.
 pub fn approval_witness_for(
     commitments: &[[u8; 32]],
     member_secret: &[u8; 32],
     _proposal_id: u64,
     _constitution_version: u32,
-) -> MemberApprovalWitness {
+) -> Result<MemberApprovalWitness, SdkError> {
     let tree = MemberTree::new(commitments);
     let commitment = member_commitment(member_secret);
-    let proof = tree.proof_for(&commitment).expect("member is in the set");
-    MemberApprovalWitness {
+    let proof = tree
+        .proof_for(&commitment)
+        .ok_or(SdkError::MemberNotInSet)?;
+    Ok(MemberApprovalWitness {
         member_secret: *member_secret,
         leaf_index: proof.leaf_index,
         siblings: proof.siblings,
-    }
+    })
 }
 
 /// A local mirror of the on-chain multisig state (deterministic, serde-able).
@@ -190,8 +193,22 @@ impl Multisig {
         member_set: &MemberSet,
         tiers: Vec<TierPolicy>,
     ) -> Result<Self, SdkError> {
+        Self::create_with_account_id(member_set.root, threshold, member_set, tiers)
+    }
+
+    /// Creates a multisig mirror bound to a known on-chain account id.
+    ///
+    /// # Errors
+    /// [`SdkError::Gate`] if the constitution is invalid.
+    pub fn create_with_account_id(
+        account_id: [u8; 32],
+        threshold: u8,
+        member_set: &MemberSet,
+        tiers: Vec<TierPolicy>,
+    ) -> Result<Self, SdkError> {
         Ok(Self {
             constitution: ConstitutionState::new(
+                account_id,
                 threshold,
                 u8::try_from(member_set.members.len())
                     .map_err(|_| SdkError::Rng("member count overflow".into()))?,
@@ -228,16 +245,26 @@ impl Multisig {
         };
         let threshold = self.constitution.required_threshold(&action)?;
         let id = self.constitution.proposal_counter;
-        let proposal = ProposalState::new(id, self.constitution.version, threshold, action);
+        let proposal = ProposalState::new(
+            self.constitution.multisig_id,
+            id,
+            self.constitution.version,
+            threshold,
+            action,
+        );
         self.proposals.push(proposal);
-        self.constitution.proposal_counter = self.constitution.proposal_counter.saturating_add(1);
+        self.constitution.proposal_counter = self
+            .constitution
+            .proposal_counter
+            .checked_add(1)
+            .ok_or(quorum_gate_core::GateError::InvalidConstitution)?;
         Ok(id)
     }
 
     /// Aggregated approval: M distinct members in **one** threshold proof
     /// (`required_threshold = M`), producing a single on-chain claim.
     ///
-    /// This is the B3 differentiator path — same guest, same image ID, one
+    /// This uses the same guest and image ID while producing one
     /// receipt instead of M correlated receipts. `commitments` must be the
     /// member commitments the constitution was created with; `members` are
     /// the approving members (their secrets stay client-side, never in the
@@ -283,7 +310,7 @@ impl Multisig {
                     self.constitution.version,
                 )
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         let witness = ThresholdWitness {
             member_root: self.constitution.member_root,
             required_threshold: u8::try_from(approvals.len())
@@ -342,7 +369,7 @@ impl Multisig {
                 &member.secret,
                 proposal_id,
                 self.constitution.version,
-            )],
+            )?],
             action: proposal.action.clone(),
             proposal_id,
             constitution_version: self.constitution.version,
@@ -385,22 +412,6 @@ impl Multisig {
         }
         apply_action(&mut self.constitution, proposal)?;
         proposal.status = ProposalStatus::Executed;
-        Ok(())
-    }
-
-    /// Rejects a proposal.
-    ///
-    /// # Errors
-    /// [`SdkError::Gate`] if the proposal is not active.
-    pub fn reject(&mut self, proposal_id: u64) -> Result<(), SdkError> {
-        let proposal = self
-            .proposals
-            .get_mut(
-                usize::try_from(proposal_id)
-                    .map_err(|_| SdkError::ProposalNotFound(proposal_id))?,
-            )
-            .ok_or(SdkError::ProposalNotFound(proposal_id))?;
-        proposal.status = ProposalStatus::Rejected;
         Ok(())
     }
 }
@@ -470,7 +481,7 @@ mod tests {
     fn approval_witness_proves_membership() {
         let set = MemberSet::from_secrets(&secrets(3));
         let member = set.member(1).unwrap();
-        let w = set.approval_witness(member, 1, 1);
+        let w = set.approval_witness(member, 1, 1).unwrap();
         let witness = ThresholdWitness {
             member_root: set.root,
             required_threshold: 1,
@@ -557,7 +568,9 @@ mod tests {
         // Old member (index 2) is gone: their proof fails against the new root.
         let old_set = MemberSet::from_secrets(&secrets(3));
         let old = old_set.member(2).unwrap();
-        let w = MemberSet::from_secrets(&[old.secret]).approval_witness(old, 99, 2);
+        let w = MemberSet::from_secrets(&[old.secret])
+            .approval_witness(old, 99, 2)
+            .unwrap();
         let bad = ThresholdWitness {
             member_root: new_root,
             required_threshold: 1,

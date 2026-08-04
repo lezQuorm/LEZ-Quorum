@@ -1,7 +1,7 @@
 //! End-to-end CLI integration tests (`RISC0_DEV_MODE=1`, fast dev proofs).
 //!
 //! These exercise the real `quorum` binary the same way `scripts/demo.sh` does:
-//! create → propose → aggregated approve-all → execute → rotate → old key dead.
+//! create → propose → aggregated approve-all → execute → rotate → activate keys.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -96,7 +96,7 @@ fn full_flow_with_aggregated_approval() {
         ],
     );
 
-    // ONE aggregated proof for both members (B3 mode).
+    // One aggregated proof for both members.
     let stdout = run_ok(
         &dir,
         &["approve-all", "--proposal", "0", "--members", "0,1"],
@@ -198,8 +198,8 @@ fn rotated_member_key_is_dead() {
     run_ok(&dir, &["approve", "--member", "1", "--proposal", "0"]);
     run_ok(&dir, &["execute", "--proposal", "0"]);
 
-    // Rotate to a fresh random 3-member set.
-    let stdout = run_ok(&dir, &["new-root", "--members", "3"]);
+    // Rotate to a fresh random 2-member set.
+    let stdout = run_ok(&dir, &["new-root", "--members", "2"]);
     let new_root = stdout.trim();
     run_ok(
         &dir,
@@ -210,7 +210,7 @@ fn rotated_member_key_is_dead() {
             "--new-member-root",
             new_root,
             "--new-member-count",
-            "3",
+            "2",
         ],
     );
     run_ok(&dir, &["approve", "--member", "0", "--proposal", "1"]);
@@ -237,7 +237,43 @@ fn rotated_member_key_is_dead() {
     );
     let stdout = run_err(&dir, &["approve", "--member", "1", "--proposal", "2"]);
     assert!(
-        stdout.contains("InvalidMembership") || stdout.contains("3005"),
+        stdout.contains("[3005] member commitment not in member root"),
         "expected invalid-membership rejection, got: {stdout}"
+    );
+
+    // Activation is only allowed after the generated root is active. The new
+    // members can then approve a fresh proposal under constitution v2.
+    run_ok(&dir, &["activate-rotation"]);
+    assert!(!dir.join("member-2.json").exists());
+    run_ok(
+        &dir,
+        &[
+            "propose",
+            "--action",
+            "transfer",
+            "--recipient",
+            RECIPIENT,
+            "--amount",
+            "100",
+            "--tier",
+            "1",
+        ],
+    );
+    run_ok(
+        &dir,
+        &["approve-all", "--proposal", "3", "--members", "0,1"],
+    );
+    run_ok(&dir, &["execute", "--proposal", "3"]);
+}
+
+#[test]
+fn rotation_bundle_cannot_activate_early() {
+    let dir = workdir("early-rotation");
+    run_ok(&dir, &["create", "--threshold", "2", "--members", "3"]);
+    run_ok(&dir, &["new-root", "--members", "3"]);
+    let error = run_err(&dir, &["activate-rotation"]);
+    assert!(
+        error.contains("rotation bundle root is not the active constitution root"),
+        "expected active-root check, got: {error}"
     );
 }

@@ -1,98 +1,102 @@
-# Quorum — Deployment & On-Chain Submission
+# Deployment and Integration
 
-Everything here is **operator-executed** and currently pending a funded LEZ
-testnet wallet (see `docs/KNOWN_LIMITATIONS.md` #2). The offline half — proof
-generation, proposal state, claim artifacts — is fully implemented, tested, and
-verified locally.
+This is an integration runbook, not a turnkey production deployment guide.
+Quorum does not yet include the transaction composer or network client required
+to submit threshold receipts to LEZ.
 
-## 1. Build
+## Local verification
 
-```bash
+~~~bash
 cargo build --release -p quorum-cli
-cargo build --release -p quorum-gate-methods   # SPEL program (guest)
-```
+cargo build --release -p quorum-gate-methods
 
-## 2. Deploy the gate
+cargo fmt --check
+RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets -- -D warnings
+RISC0_DEV_MODE=1 cargo test --workspace
+RISC0_DEV_MODE=1 ./scripts/demo.sh
+~~~
 
-Deploy the compiled `quorum_gate` guest as an LEZ program on devnet/testnet and
-record the resulting **program ID**. The gate's image ID must match the
-receipts' pinned ID (`quorum_image_id::THRESHOLD_IMAGE_ID`, refreshed by
-`scripts/update-image-id.sh`).
+For a real local threshold receipt:
 
-## 3. Initialize a multisig
+~~~bash
+RISC0_DEV_MODE=0 \
+  cargo run -p quorum-prover --example prove_threshold --release
+~~~
 
-```bash
-quorum create --threshold 2 --members 3 --tiers '[{"id":1,"threshold":2,"max_amount":1000}]'
-```
+## Required transaction composer
 
-Submit the on-chain `Initialize` instruction with
-`(threshold, member_count, member_root, tiers)` from the resulting
-`quorum.json`. The program writes a `ConstitutionState` v1 into the multisig
-account (claimed by the program).
+Before deployment, implement a client that performs all of the following:
 
-## 4. Create & fund the treasury vault
+1. Reads the multisig and proposal accounts from LEZ.
+2. Builds a threshold witness from the active constitution.
+3. Produces and verifies the threshold receipt locally.
+4. Converts the proof journal to the approve instruction type.
+5. Adds the threshold receipt as an assumption to the outer SPEL execution.
+6. Builds, signs, submits, and confirms the LEZ transaction.
+7. Re-reads proposal state and checks the accepted nullifiers.
 
-The treasury vault is a **program-derived account** of the gate:
+The serialized receipt currently present in CLI proof artifacts is not consumed
+by env::verify inside the gate guest. Nested receipt verification succeeds only
+when the outer executor receives the receipt as an assumption.
 
-```
-seed     = SHA256("quorum/vault/v1" || multisig_account_id)
-vault_id = AccountId::for_public_pda(gate_program_id, seed)
-```
+## Program deployment
 
-1. Create a token **holding** account at `vault_id` (token program
-   `InitializeAccount`, definition = the LEZ token the treasury uses).
-2. Fund it (mint or deposit) with the treasury balance.
+After the composer exists:
 
-The gate never moves balances itself — on `Execute` it authorizes a
-`ChainedCall` into the vault's token program (`program_owner` of the holding).
+1. Build the quorum-gate method and record its image ID.
+2. Deploy the method using the supported LEZ program deployment flow.
+3. Initialize a multisig constitution with a nonzero account ID, threshold,
+   member count, member root, and validated tiers.
+4. Create the treasury token holding at the gate-derived vault PDA.
+5. Fund the vault with a test-only amount.
+6. Submit propose, approve, and execute transactions through the composer.
 
-## 5. Propose & approve
+The vault seed is:
 
-```bash
-quorum propose --action transfer --recipient <hex> --amount 500 --tier 1
-# per-member (M correlated claims) OR aggregated single-proof (B3):
-quorum approve --member 0 --proposal 0
-quorum approve-all --proposal 0 --members 0,1
-```
+~~~text
+SHA256("quorum/vault/v1" || multisig_account_id)
+~~~
 
-Each approval writes a claim to `claims/` (`claim-<proposal>-<member>.json` or
-`claim-<proposal>-aggregated.json`). Submit each claim on-chain via the
-`Approve` instruction; the guest verifies the receipt against the pinned image
-ID, runs `check_claim` (stale constitution 4010 / journal mismatch 4005 /
-tier-cap mismatch 4011 / duplicate nullifier 4003), and appends the nullifiers.
+Transfer execution validates both that PDA and the approved recipient before
+emitting the token chained call.
 
-## 6. Execute
+## Rotation operations
 
-```bash
-quorum execute --proposal 0
-```
+The local CLI creates a private replacement bundle and prints its public root:
 
-Submit the `Execute` instruction with the accounts:
+~~~bash
+NEW_ROOT="$(quorum new-root --members 3)"
+quorum propose \
+  --action rotate \
+  --new-member-root "$NEW_ROOT" \
+  --new-member-count 3
+~~~
 
-| Account | Note |
-|---|---|
-| `multisig` | program-owned constitution (owner = gate) |
-| `proposal` | program-owned proposal state (owner = gate) |
-| `vault` | treasury holding PDA — required for `Transfer` actions |
-| `recipient` | target account of the transfer |
+Approve and execute the rotation under the old constitution. Only after the
+new root is active should operators run:
 
-- **Transfer:** the gate validates `vault` is the treasury PDA (error 4012),
-  marks the proposal executed, and emits a `ChainedCall` to the vault's token
-  program transferring `amount` (serde-mirrored
-  `token_core::Instruction::Transfer`) with the vault PDA seed authorized.
-- **Rotate / threshold change:** `vault` and `recipient` are ignored (pass any
-  account, e.g. the multisig itself); no call is emitted. The SPEL macro
-  requires the full account list on every `Execute`, so these two must always
-  be supplied even for governance actions.
+~~~bash
+quorum activate-rotation
+~~~
 
-## 7. Governance
+Activation re-derives the bundle commitments and root, checks the root and
+member count against the active constitution, then installs the replacement
+local key files. The bundle contains secrets and must be distributed and
+stored through an operator-approved secure channel.
 
-Rotation and threshold changes go through the same propose → approve →
-execute flow. After a rotation the old member set's keys are provably dead
-(version-bound nullifiers + new root) — demonstrated by `scripts/demo.sh` and
-`crates/quorum-cli/tests/cli_flow.rs`.
+## Minimum integration tests
 
-## 8. Evidence
+A deployment is not complete until automated tests cover:
 
-After any testnet deployment, re-pin the hashes and artifacts in
-`docs/evidence/` (see its README) via `scripts/regenerate-evidence.sh`.
+- missing, wrong-image, malformed, and tampered receipt assumptions;
+- cross-multisig proposal substitution;
+- stale proposal and stale constitution claims;
+- duplicate nullifiers;
+- recipient and vault substitution;
+- transfer above the tier cap;
+- old-member rejection after rotation;
+- replacement-member approval after rotation; and
+- interrupted transaction and retry behavior.
+
+Record the deployed program ID, dependency revisions, account IDs, transaction
+hashes, and observed costs under docs/evidence.

@@ -1,6 +1,6 @@
 [package]
 name = "quorum-gate-core"
-description = "On-chain Quorum gate program logic: constitution, proposals, nullifier aggregation, action application (LP-0002)"
+description = "Shared constitution, proposal, claim, and execution rules for Quorum"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

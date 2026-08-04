@@ -1,104 +1,56 @@
-# ADR-0001 — Member set as a Merkle root, never plaintext
+# Architecture Decisions
 
-**Status:** Accepted (Chunk 2)
+## ADR-0001: Commit the member set as one Merkle root
 
-**Context.** LP-0002 requires that M-of-N approval not reveal member identity.
-Storing member public keys or commitments individually on-chain leaks the
-membership set (the org chart) and links approvals over time.
+**Status:** Accepted.
 
-**Decision.** Commit only a Merkle **root** over member commitments. Each
-member proves membership privately inside the Risc0 guest by evaluating their
-Merkle path against the current root. Rotation produces a **new root** — the
-only on-chain artifact of a membership change.
+The constitution stores a root over member commitments rather than a plaintext
+member list. Each approval proves a private Merkle path. This hides set
+membership but does not hide the public root, member count, version, or the
+fact that a rotation occurred.
 
-**Consequences.** Observers cannot enumerate the set or detect rotations
-(*plausible continuity*). The guest must recompute the root from the path
-(SHA-256), which dominates proof time (~368 s for one approval). Merkle proofs
-require the full member set client-side to build paths — acceptable, as each
-member knows their co-members' commitments only as hashes.
+## ADR-0002: Use proposal- and version-bound nullifiers
 
-# ADR-0002 — Nullifier = H(member_secret, proposal_id, version)
+**Status:** Accepted.
 
-**Status:** Accepted (Chunk 2)
+Each approval derives a nullifier from the member secret, proposal ID, and
+constitution version. Duplicate nullifiers are rejected. Changing either the
+proposal or constitution changes the nullifier and prevents replay across
+governance epochs.
 
-**Context.** Double-vote prevention must work without revealing which member
-voted.
+## ADR-0003: Support individual and aggregated proof modes
 
-**Decision.** Each approval mints `nullifier = SHA-256(domain_sep || member_secret || proposal_id || constitution_version)`. The program rejects any
-already-seen nullifier (error 1005).
+**Status:** Accepted.
 
-**Consequences.** A member can approve a given proposal exactly once; replaying
-the same claim on-chain is impossible because the nullifier is already
-recorded. Version-bounding makes a nullifier from a **retired** member set
-invalid after rotation — a removed key is provably dead. Partial approvals
-(< M) are restart-safe because the on-chain nullifier set is the source of
-truth.
+The same circuit supports one approval per receipt and multiple distinct
+approvals in one receipt. Aggregated mode reduces the number of proof artifacts;
+individual mode allows approvals to accumulate over time. Both paths update the
+same proposal nullifier set.
 
-# ADR-0003 — One aggregated threshold proof per on-chain claim
+## ADR-0004: Bind proposals to account and constitution version
 
-**Status:** Accepted (Chunk 3); aggregated path shipped in CLI/SDK (post-Chunk-8 hardening)
+**Status:** Accepted.
 
-**Context.** The public PoC attributes each vote on-chain. LP-0002 asks for a
-threshold confirmation without attribution; a naive "one proof per approval"
-flow leaves M correlated on-chain artifacts.
+A proposal records its owning multisig ID and the constitution version at
+creation. Approval and execution reject a proposal from another multisig or an
+older constitution. Rotation changes the root and version atomically, making
+prior proposals stale.
 
-**Decision.** Approvals are aggregated: the on-chain `approve` instruction
-verifies one receipt proving *M distinct* fresh approvals from the committed
-member root, the proposal's tier threshold, and the tier amount cap.
+## ADR-0005: Verify threshold receipts through Risc0 composition
 
-**Consequences.** Only a nullifier set grows on-chain; no per-member artifact
-exists. Proving is heavier per claim but amortizes across M approvals. The
-implementation supports both per-member proving (fast, one path) and the
-aggregated path (single receipt) via the same guest — exposed as
-`quorum approve-all --members 0,1` and `Multisig::approve_many` (B3).
+**Status:** Accepted design; transaction integration pending.
 
-# ADR-0004 — Rotation is atomic with revocation
+The SPEL guest verifies the pinned threshold image and journal with env::verify.
+Nested verification requires the host transaction executor to attach the
+threshold receipt as an assumption. The transaction composer that performs
+this step is required before deployment.
 
-**Status:** Accepted (Chunk 2)
+## ADR-0006: Isolate LEZ account compatibility
 
-**Context.** A stale signer set is the #1 real-world multisig pain. Rotation
-must not leave a window where a removed key still works.
+**Status:** Compatibility model implemented; credential binding pending.
 
-**Decision.** A `RotateMembers` action is itself a proposal approved under the
-**current** constitution. On execution, the new member root + member count are
-committed atomically (single state transition, one proposal record).
-Nullifiers are version-bound (ADR-0002), so old-set claims fail immediately
-after the version bump.
-
-**Consequences.** The removed member's key becomes unusable at the exact block
-the new root lands. The old root is not stored — no on-chain way to replay or
-attribute the previous set.
-
-# ADR-0005 — SPEL program verifies the pinned Risc0 image ID
-
-**Status:** Accepted (Chunk 4)
-
-**Context.** On-chain verification must be tiny and non-upgradeable in secret.
-
-**Decision.** `programs/quorum-gate` is a SPEL (`#[lez_program]`) program that
-calls `env::verify` against the **pinned** image ID from `quorum-image-id`
-(real ID, `RISC0_DEV_MODE=0`). The IDL is generated by
-`spel_framework::generate_idl!`.
-
-**Consequences.** The on-chain verifier contains no circuit logic — only the
-image ID check + nullifier bookkeeping + constitution state. Changing the
-circuit requires an image-ID update (explicit, auditable). The IDL is a
-first-class deliverable at `programs/quorum-gate/idl/quorum_gate.idl.json`.
-
-# ADR-0006 — LEZ v0.3 commitment format, nonce-incrementing shielded accounts
-
-**Status:** Accepted (Chunk 1)
-
-**Context.** The public PoC requires fresh zero-nonce keypairs claimed by the
-program. Shielded LEZ accounts are owned by the privacy protocol and increment
-their nonce on every use — they cannot satisfy that constraint.
-
-**Decision.** `lez-compat` implements the **current testnet** commitment format
-(`/LEE/v0.3/Commitment/`) and Merkle membership semantics, and models shielded
-accounts with their nonce + `program_owner` rules (adapted from the proven
-LEZ-TokenStudio `lez-compat`).
-
-**Consequences.** Proofs bind to the live v0.3 format, so membership claims
-verify against real testnet commitment trees. If the protocol format changes,
-`lez-compat` is the single place to update — evidence regeneration is
-scripted (`scripts/regenerate-evidence.sh`).
+lez-compat models LEZ v0.3 account commitments, nonce progression, owner
+stability, and Merkle proofs in a separate crate. The current Quorum circuit
+uses an independent member secret scheme. Live shielded-account control must be
+bound explicitly before the compatibility layer becomes part of the security
+claim.

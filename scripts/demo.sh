@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Quorum end-to-end demo: 2-of-3 multisig approves a treasury transfer,
-# then rotates a member (Idea 02 differentiator) and executes.
+# Quorum end-to-end demo: a 2-of-3 treasury approves a transfer, rotates its
+# private member set, and activates the replacement keys.
 #
 # Uses RISC0_DEV_MODE=1 (fast mock proofs) for a quick local demo.
 # For REAL proofs, run with RISC0_DEV_MODE=0 (each proof takes minutes).
@@ -26,13 +26,13 @@ echo "== 1. create 2-of-3 multisig =="
 echo "== 2. propose treasury transfer (tier 1, 500) =="
 "$Q" propose --action transfer --recipient "$RECIPIENT" --amount 500 --tier 1
 
-echo "== 3. members 0 and 1 approve in ONE aggregated proof (B3 mode) =="
+echo "== 3. members 0 and 1 approve in one aggregated proof =="
 "$Q" approve-all --proposal 0 --members 0,1
 
 echo "== 4. execute (threshold reached) =="
 "$Q" execute --proposal 0
 
-echo "== 5. rotate the member set (Idea 02: new root, nothing else) =="
+echo "== 5. rotate the private member set =="
 NEW_ROOT="$("$Q" new-root --members 3)"
 echo "   new member root: $NEW_ROOT"
 "$Q" propose --action rotate --new-member-root "$NEW_ROOT" --new-member-count 3
@@ -52,10 +52,12 @@ fi
 echo "PASS: member 1 (old set) rejected after rotation"
 echo "   $APPROVE_OUT"
 
+echo "== 8. activate and use the replacement member set =="
+"$Q" activate-rotation
+"$Q" propose --action transfer --recipient "$RECIPIENT" --amount 100 --tier 1
+"$Q" approve-all --proposal 3 --members 0,1
+"$Q" execute --proposal 3
+
 echo
 echo "demo artifacts: $(ls claims/ | tr '\n' ' ')"
 echo "NOTE: RISC0_DEV_MODE=$RISC0_DEV_MODE — set 0 for real proofs."
-# (A full member-set rotation is shown here; the single-member-swap case with a
-#  removed key provably dead is covered by the rotation_flow_updates_constitution
-#  SDK test. Distributing new member secret files after a rotation is an
-#  operator step — see docs/DEPLOYMENT.md.)
