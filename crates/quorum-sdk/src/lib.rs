@@ -204,15 +204,111 @@ impl Multisig {
 
     /// Opens a proposal; returns its id.
     ///
+    /// The tier amount cap is *constitution policy*, never a caller-supplied
+    /// value: for `Transfer` actions the caller-provided `tier_max_amount` is
+    /// replaced with the authoritative cap from the constitution's tier state
+    /// (mirroring the on-chain `check_claim` 4011 guard).
+    ///
     /// # Errors
     /// [`SdkError::Gate`] if the action is invalid for this constitution.
     pub fn propose(&mut self, action: ActionData) -> Result<u64, SdkError> {
+        let action = match action {
+            ActionData::Transfer {
+                recipient,
+                amount,
+                tier_id,
+                ..
+            } => ActionData::Transfer {
+                recipient,
+                amount,
+                tier_id,
+                tier_max_amount: self.constitution.tier(tier_id)?.max_amount,
+            },
+            other => other,
+        };
         let threshold = self.constitution.required_threshold(&action)?;
         let id = self.constitution.proposal_counter;
         let proposal = ProposalState::new(id, self.constitution.version, threshold, action);
         self.proposals.push(proposal);
         self.constitution.proposal_counter = self.constitution.proposal_counter.saturating_add(1);
         Ok(id)
+    }
+
+    /// Aggregated approval: M distinct members in **one** threshold proof
+    /// (`required_threshold = M`), producing a single on-chain claim.
+    ///
+    /// This is the B3 differentiator path — same guest, same image ID, one
+    /// receipt instead of M correlated receipts. `commitments` must be the
+    /// member commitments the constitution was created with; `members` are
+    /// the approving members (their secrets stay client-side, never in the
+    /// journal). In real mode (`RISC0_DEV_MODE=0`) a succinct proof is
+    /// produced; in dev mode a fast mock proof (tests/CI).
+    ///
+    /// # Errors
+    /// Any [`SdkError`] variant, including a duplicate member in `members`
+    /// (same secret -> same nullifier -> [`quorum_circuit::CircuitError::DuplicateNullifier`]).
+    pub fn approve_many(
+        &mut self,
+        proposal_id: u64,
+        commitments: &[[u8; 32]],
+        members: &[&Member],
+    ) -> Result<QuorumProof, SdkError> {
+        if members.is_empty() {
+            return Err(SdkError::Rng(
+                "approve_many requires at least one member".into(),
+            ));
+        }
+        let proposal_idx =
+            usize::try_from(proposal_id).map_err(|_| SdkError::ProposalNotFound(proposal_id))?;
+        let action = {
+            let proposal = self
+                .proposals
+                .get(proposal_idx)
+                .ok_or(SdkError::ProposalNotFound(proposal_id))?;
+            if proposal.status != ProposalStatus::Active {
+                return Err(SdkError::Gate(
+                    quorum_gate_core::GateError::ProposalNotActive,
+                ));
+            }
+            proposal.action.clone()
+        };
+
+        let approvals: Vec<MemberApprovalWitness> = members
+            .iter()
+            .map(|member| {
+                approval_witness_for(
+                    commitments,
+                    &member.secret,
+                    proposal_id,
+                    self.constitution.version,
+                )
+            })
+            .collect();
+        let witness = ThresholdWitness {
+            member_root: self.constitution.member_root,
+            required_threshold: u8::try_from(approvals.len())
+                .map_err(|_| SdkError::Rng("too many approvals in one proof".into()))?,
+            approvals,
+            action,
+            proposal_id,
+            constitution_version: self.constitution.version,
+        };
+        // Sanity: the witness must satisfy the statement before any proving.
+        evaluate(&witness).map_err(quorum_prover::ProverError::InvalidWitness)?;
+
+        let proof = prove_witness(&witness)?;
+        if proof.journal.proposal_id != proposal_id {
+            return Err(SdkError::ProofProposalMismatch);
+        }
+
+        let proposal = self
+            .proposals
+            .get_mut(proposal_idx)
+            .ok_or(SdkError::ProposalNotFound(proposal_id))?;
+        let onchain_journal = OnChainThresholdJournal::from(&proof.journal);
+        let check = check_claim(&self.constitution, proposal, &onchain_journal)?;
+        apply_approved_claim(proposal, &check)?;
+        Ok(proof)
     }
 
     /// Generates a member's approval proof and applies it to the local mirror.
@@ -474,6 +570,97 @@ mod tests {
             evaluate(&bad).unwrap_err(),
             quorum_circuit::CircuitError::InvalidMembership
         );
+    }
+
+    #[test]
+    fn propose_forces_constitution_tier_cap() {
+        let set = MemberSet::from_secrets(&secrets(3));
+        let mut multisig = Multisig::create(
+            2,
+            &set,
+            vec![TierPolicy {
+                id: 1,
+                threshold: 2,
+                max_amount: 1_000,
+            }],
+        )
+        .unwrap();
+        // Caller tries to inflate the cap — the SDK replaces it with the
+        // constitution's authoritative cap.
+        let id = multisig
+            .propose(ActionData::Transfer {
+                recipient: [9; 32],
+                amount: 500,
+                tier_id: 1,
+                tier_max_amount: 999_999,
+            })
+            .unwrap();
+        match &multisig.proposals[id as usize].action {
+            ActionData::Transfer {
+                tier_max_amount, ..
+            } => assert_eq!(*tier_max_amount, 1_000),
+            other => panic!("expected transfer action, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aggregated_approval_reaches_threshold_in_one_proof() {
+        let set = MemberSet::from_secrets(&secrets(3));
+        let mut multisig = Multisig::create(
+            2,
+            &set,
+            vec![TierPolicy {
+                id: 1,
+                threshold: 2,
+                max_amount: 1_000,
+            }],
+        )
+        .unwrap();
+        let commitments = commitments_of(&set);
+        let id = multisig.propose(transfer()).unwrap();
+
+        let members: Vec<&Member> = vec![set.member(0).unwrap(), set.member(1).unwrap()];
+        let proof = multisig.approve_many(id, &commitments, &members).unwrap();
+
+        // ONE receipt proves BOTH approvals.
+        assert_eq!(proof.journal.approval_count, 2);
+        assert_eq!(proof.journal.required_threshold, 2);
+        assert_eq!(proof.journal.nullifiers.len(), 2);
+        assert!(multisig.proposals[id as usize].threshold_met());
+        assert_eq!(multisig.proposals[id as usize].nullifiers.len(), 2);
+
+        multisig.execute(id).unwrap();
+        assert_eq!(
+            multisig.proposals[id as usize].status,
+            ProposalStatus::Executed
+        );
+    }
+
+    #[test]
+    fn aggregated_approval_rejects_duplicate_member() {
+        let set = MemberSet::from_secrets(&secrets(3));
+        let mut multisig = Multisig::create(
+            2,
+            &set,
+            vec![TierPolicy {
+                id: 1,
+                threshold: 2,
+                max_amount: 1_000,
+            }],
+        )
+        .unwrap();
+        let commitments = commitments_of(&set);
+        let id = multisig.propose(transfer()).unwrap();
+
+        let members: Vec<&Member> = vec![set.member(0).unwrap(), set.member(0).unwrap()];
+        assert!(matches!(
+            multisig.approve_many(id, &commitments, &members),
+            Err(SdkError::Prover(
+                quorum_prover::ProverError::InvalidWitness(
+                    quorum_circuit::CircuitError::DuplicateNullifier
+                )
+            ))
+        ));
     }
 
     #[test]

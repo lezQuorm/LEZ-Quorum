@@ -58,8 +58,9 @@ Chunks are executed **in order**. Each chunk has a Goal, Tasks, and Definition o
 
 ## Chunk 5 — SDK + CLI ✅
 **Goal:** `quorum-sdk` + `quorum-cli`: proof generation, proposal submission, approve (with ZK proof), rotate members, tiered spend.
-- [x] CLI: `quorum create / propose / approve / execute / reject / info / new-root`.
-- [x] SDK: `Multisig`, `MemberSet`, `approve` with client-side proof, claims written as JSON artifacts.
+- [x] CLI: `quorum create / propose / approve / approve-all / execute / reject / info / new-root`.
+- [x] SDK: `Multisig`, `MemberSet`, `approve` (per-member) + `approve_many`
+  (aggregated single-proof mode) with client-side proofs, claims written as JSON artifacts.
 - **DoD:** full flow reproducible from CLI (verified: create → propose → approve×2 → execute → rotate → execute).
 
 ## Chunk 6 — Reference integration + testnet evidence 🟡
@@ -84,10 +85,30 @@ Chunks are executed **in order**. Each chunk has a Goal, Tasks, and Definition o
 ## Chunk 9 — CI + submission 🟡
 **Goal:** Hosted CI green, demo video, solution PR.
 - [x] `.github/workflows/ci.yml`: fmt + clippy (`-D warnings`) + tests + real-proof job (RISC0_DEV_MODE=0).
+- [x] Fill `solutions/LP-0002.md` template; **PR opened**:
+  `logos-co/lambda-prize#120` — `Solution: LP-0002 — LEZ-Quorum: Private M-of-N
+  Multisig with Shielded Rotation and Tiered Thresholds`.
 - [ ] Fix GitHub billing lock so hosted jobs run (operator-side; same lock hit in LP-0005).
 - [ ] Narrated video showing proof generation (`RISC0_DEV_MODE=0` in terminal).
-- [ ] Fill `solutions/LP-0002.md` template; open PR `Solution: LP-0002 — Quorum...`.
 - **DoD:** all criteria boxes checked; PR opened with complete evidence.
+
+## Post-chunk hardening (landed after Chunk 8)
+
+- [x] **Aggregated proof mode shipped in the CLI/SDK** (`quorum approve-all
+  --members 0,1` / `Multisig::approve_many`): M approvals in ONE receipt —
+  B3 no longer documented-but-unwired.
+- [x] **Tier cap is constitution-authoritative**: `Multisig::propose` forces
+  the tier cap from on-chain state; the gate re-checks it (`GateError::TierCapMismatch`, 4011).
+- [x] **On-chain Transfer executed via ChainedCall**: the SPEL guest emits a
+  token-program transfer from the treasury vault PDA (seed:
+  `quorum/vault/v1`), validates the vault PDA (4012), and passes the amount
+  through a serde mirror of `token_core::Instruction::Transfer`.
+- [x] **Image ID re-pinned** to the current build (`[114484643, ...]`);
+  `scripts/update-image-id.sh` now actually writes the pin (compute_image_id,
+  no proving).
+- [x] **CLI integration tests** (`crates/quorum-cli/tests/cli_flow.rs`) +
+  `apps/basecamp-quorum/module.json` (clears submission-validator warnings).
+- [x] `docs/DEPLOYMENT.md` + `docs/evidence/` added; doc drift fixed.
 
 ---
 

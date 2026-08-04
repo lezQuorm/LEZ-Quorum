@@ -15,7 +15,9 @@ A `ui_qml` module exposing the Quorum treasury workflow inside Logos Basecamp:
 
 Follows the universal Logos `ui_qml` pattern:
 
-- `metadata.json` declares the module and its `lez_core` dependency;
+- `metadata.json` declares the module and its `lez_core` dependency (this is
+  the **canonical** Logos manifest); `module.json` is a lightweight mirror for
+  tooling/validators that look for that filename;
 - `src/qml/QuorumView.qml` is the Basecamp view with tabs for each workflow
   step;
 - the module backend launches the audited `quorum` CLI via `QProcess` argument

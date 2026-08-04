@@ -123,6 +123,17 @@ impl ConstitutionState {
         Ok(())
     }
 
+    /// Returns the tier policy for an id.
+    ///
+    /// # Errors
+    /// [`GateError::TierNotFound`] if no tier has this id.
+    pub fn tier(&self, id: u8) -> Result<&TierPolicy, GateError> {
+        self.tiers
+            .iter()
+            .find(|t| t.id == id)
+            .ok_or(GateError::TierNotFound)
+    }
+
     /// Required threshold for an action (tier threshold vs default threshold).
     ///
     /// # Errors
@@ -332,7 +343,7 @@ pub struct ClaimCheck {
     pub nullifiers: Vec<[u8; 32]>,
 }
 
-/// Deterministic gate errors (codes `4001`–`4010`).
+/// Deterministic gate errors (codes `4001`–`4011`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum GateError {
@@ -356,6 +367,17 @@ pub enum GateError {
     InvalidThresholdChange = 4009,
     /// The proof was verified against a different (stale) constitution.
     StaleConstitution = 4010,
+    /// The journal's tier cap does not match the constitution's tier cap.
+    ///
+    /// The tier amount cap is a *constitution* policy, never a caller-supplied
+    /// value: a proof whose `Transfer.tier_max_amount` differs from the
+    /// on-chain tier cap is rejected deterministically (a client could
+    /// otherwise prove an oversized transfer under a self-inflated cap).
+    TierCapMismatch = 4011,
+    /// The vault account supplied to `Execute` is not this program's treasury
+    /// `PDA` for the multisig (a caller-supplied arbitrary sender is rejected
+    /// before any transfer `ChainedCall` is emitted).
+    InvalidVault = 4012,
 }
 
 impl GateError {
@@ -379,6 +401,8 @@ impl GateError {
             Self::RotationWouldBreakThreshold => "rotation would break threshold",
             Self::InvalidThresholdChange => "invalid threshold change",
             Self::StaleConstitution => "proof bound to a stale constitution",
+            Self::TierCapMismatch => "journal tier cap does not match the constitution",
+            Self::InvalidVault => "vault account is not the treasury PDA",
         }
     }
 }
@@ -418,6 +442,21 @@ pub fn check_claim(
     }
     if journal.action != proposal.action {
         return Err(GateError::JournalMismatch);
+    }
+    // The tier amount cap is constitution policy. Re-derive it from on-chain
+    // state and reject any proof whose `tier_max_amount` was caller-supplied
+    // differently (guards against cap inflation outside the circuit's
+    // `amount <= tier_max_amount` check).
+    if let ActionData::Transfer {
+        tier_id,
+        tier_max_amount,
+        ..
+    } = &journal.action
+    {
+        let tier = constitution.tier(*tier_id)?;
+        if *tier_max_amount != tier.max_amount {
+            return Err(GateError::TierCapMismatch);
+        }
     }
     // Per-member approval proofs carry `required_threshold == 1`; the proposal
     // threshold is enforced on-chain by the aggregated nullifier count.
@@ -478,7 +517,9 @@ pub fn apply_action(
             constitution.change_threshold(*new_threshold)?;
         }
         ActionData::Transfer { .. } => {
-            // Emitted as a ChainedCall by the guest; nothing to mutate here.
+            // The SPEL guest emits the transfer as a ChainedCall into the
+            // treasury vault's token program (see `quorum_gate.rs::execute`);
+            // no constitution state is mutated here.
         }
     }
     Ok(())
@@ -582,6 +623,47 @@ pub fn marker_pda(program_id: [u32; 8], image_id: [u32; 8], threshold: u8) -> [u
     }
     bytes.push(threshold);
     sha2_256(&bytes)
+}
+
+/// Domain tag for the treasury vault PDA seed.
+///
+/// The vault is a program-derived account of the `quorum-gate` program:
+/// `vault_account_id = for_public_pda(quorum_gate_program_id, vault_pda_seed(multisig_id))`.
+/// Binding the seed to the multisig account id gives every Quorum instance its
+/// own treasury account, derived deterministically by anyone.
+pub const VAULT_SEED_DOMAIN: &[u8] = b"quorum/vault/v1";
+
+/// The 32-byte PDA seed of the treasury vault for a given multisig account.
+///
+/// `SHA256("quorum/vault/v1" || multisig_account_id)` — deterministic,
+/// instance-unique, and computable off-chain by the deployer.
+#[must_use]
+pub fn vault_pda_seed(multisig_account_id: &[u8; 32]) -> [u8; 32] {
+    let mut bytes = Vec::with_capacity(VAULT_SEED_DOMAIN.len() + 32);
+    bytes.extend_from_slice(VAULT_SEED_DOMAIN);
+    bytes.extend_from_slice(multisig_account_id);
+    sha2_256(&bytes)
+}
+
+/// Serde mirror of the LEZ token program's transfer instruction.
+///
+/// The on-chain `execute` handler emits a `ChainedCall` to the treasury
+/// vault's token program (the vault holding's `program_owner`). `ChainedCall`
+/// serializes the instruction with the risc0 serde format (`risc0_zkvm::serde::to_vec`),
+/// and the token program decodes it with the same deserializer
+/// (`read_lee_inputs::<token_core::Instruction>`). Serde encodes enums by
+/// structure (variant name + field names), so this type — identical in shape
+/// to `token_core::Instruction::Transfer { amount_to_transfer: u128 }` —
+/// produces byte-identical instruction data. This crate deliberately does not
+/// depend on LEZ's `token-core` crate; the mirror keeps the workspace
+/// standalone and the compatibility boundary explicit and unit-tested.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TokenTransferInstruction {
+    /// Transfer tokens from the authorized vault holding to the recipient.
+    Transfer {
+        /// Amount in LEZ base units.
+        amount_to_transfer: u128,
+    },
 }
 
 #[must_use]
@@ -752,5 +834,56 @@ mod tests {
     fn gate_error_codes_stable() {
         assert_eq!(GateError::DuplicateNullifier.code(), 4003);
         assert_eq!(GateError::StaleConstitution.code(), 4010);
+        assert_eq!(GateError::TierCapMismatch.code(), 4011);
+    }
+
+    #[test]
+    fn tier_cap_mismatch_rejected_on_chain() {
+        let c = constitution();
+        // A malicious proposer + approver agree on an inflated cap; the gate
+        // must still reject it against the constitution's authoritative cap.
+        let inflated_action = ActionData::Transfer {
+            recipient: [9; 32],
+            amount: 500,
+            tier_id: 1,
+            tier_max_amount: 1_000_000,
+        };
+        let proposal = ProposalState::new(1, c.version, 2, inflated_action);
+        let (_, j) = witness();
+        let mut inflated = OnChainThresholdJournal::from(&j);
+        if let ActionData::Transfer {
+            tier_max_amount, ..
+        } = &mut inflated.action
+        {
+            *tier_max_amount = 1_000_000;
+        }
+        assert_eq!(
+            check_claim(&c, &proposal, &inflated),
+            Err(GateError::TierCapMismatch)
+        );
+    }
+
+    #[test]
+    fn vault_seed_is_deterministic_and_instance_unique() {
+        let multisig_a = [7u8; 32];
+        let multisig_b = [8u8; 32];
+        assert_eq!(vault_pda_seed(&multisig_a), vault_pda_seed(&multisig_a));
+        assert_ne!(vault_pda_seed(&multisig_a), vault_pda_seed(&multisig_b));
+        assert_ne!(vault_pda_seed(&multisig_a), [0u8; 32]);
+    }
+
+    #[test]
+    fn transfer_instruction_mirrors_token_core_shape() {
+        // Pin the serde shape of the LEZ token instruction so any drift in the
+        // mirror is caught here (risc0 serde is structure-driven, so identical
+        // serde shape => identical ChainedCall instruction words).
+        let json = serde_json::to_value(TokenTransferInstruction::Transfer {
+            amount_to_transfer: 500,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"Transfer": {"amount_to_transfer": 500}})
+        );
     }
 }

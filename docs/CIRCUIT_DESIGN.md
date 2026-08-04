@@ -50,11 +50,13 @@ The journal contains **no secrets** (tested: `journal_does_not_expose_secrets`).
 
 ## Usage modes
 
-- **Per-member approvals (on-chain default):** each member proves one approval
+- **Per-member approvals:** each member proves one approval
   (`required_threshold = 1`); the gate aggregates nullifiers and enforces the
-  threshold. This is what the SPEL program consumes.
-- **Aggregated single proof (differentiator B3):** all M members' approvals are
-  proven in **one** proof (`required_threshold = M`) for a single-tx path.
+  threshold (`quorum approve --member i --proposal p`).
+- **Aggregated single proof (differentiator B3, shipped):** all M members'
+  approvals are proven in **one** proof (`required_threshold = M`) for a
+  single-tx path (`quorum approve-all --proposal p --members 0,1` / SDK
+  `Multisig::approve_many`).
 
 ## Hashing
 

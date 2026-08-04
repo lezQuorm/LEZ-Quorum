@@ -97,7 +97,16 @@ See [`criteria-checklist.md`](../criteria-checklist.md) for the full 1:1 map to
 - [x] Module/SDK for Logos modules: `quorum-sdk` (Rust).
 - [x] SPEL IDL for the LEZ program: `programs/quorum-gate/idl/quorum_gate.idl.json`.
 - [x] Deterministic, documented error codes for all invalid-proof and
-  double-vote scenarios ([`docs/ERROR_CODES.md`](ERROR_CODES.md)).
+  double-vote scenarios ([`docs/ERROR_CODES.md`](ERROR_CODES.md)), including
+  the on-chain guards `TierCapMismatch` (4011 — the tier amount cap is
+  re-derived from constitution state, never caller-supplied) and
+  `InvalidVault` (4012 — the transfer vault must be the treasury PDA).
+- [x] Aggregated single-proof mode shipped: `quorum approve-all --members 0,1`
+  proves M distinct approvals in **one** receipt (B3).
+- [x] On-chain transfer execution wired: `Execute` emits a `ChainedCall` into
+  the treasury vault's token program (see `docs/ARCHITECTURE.md`,
+  `docs/DEPLOYMENT.md`); live-sequencer verification is part of the
+  operator's testnet run.
 - [x] Partial approvals (< M) preserved and resumable across client restarts
   (on-chain nullifier set is the source of truth).
 
@@ -139,8 +148,8 @@ evidence are part of the repository.
 
 ## Validation
 
-- Strict Clippy (`-D warnings`) and workspace tests pass (54 tests, dev-mode
-  proofs for speed).
+- Strict Clippy (`-D warnings`) and workspace tests pass (63 tests + 1
+  ignored real-proof round-trip, dev-mode proofs for speed).
 - Real proofs generated with `RISC0_DEV_MODE=0` (2-of-3, receipt verified,
   receipt size ~219 KiB).
 - End-to-end demo verified: create → propose → approve ×2 → execute →
@@ -150,9 +159,9 @@ evidence are part of the repository.
 
 | Measurement | Result |
 | --- | ---: |
-| Real 2-of-3 threshold proof (single approval) | ~368 s |
+| Real 2-of-3 threshold proof (aggregated, 2 approvals) | ~446 s |
 | Receipt size (bincode) | 224,346 bytes |
-| Pinned image ID | `[2504793846, 1302641585, 509407582, 452779787, 1019694882, 662766674, 1532127949, 2008668271]` |
+| Pinned image ID | `[114484643, 2738439775, 93721807, 2809967440, 468656058, 4246638024, 2892828720, 3001232771]` |
 
 ## Privacy And Security
 

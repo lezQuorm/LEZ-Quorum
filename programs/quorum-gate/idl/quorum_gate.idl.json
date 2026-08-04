@@ -108,6 +108,18 @@
           "name": "proposal",
           "signer": false,
           "writable": true
+        },
+        {
+          "init": false,
+          "name": "vault",
+          "signer": false,
+          "writable": true
+        },
+        {
+          "init": false,
+          "name": "recipient",
+          "signer": false,
+          "writable": true
         }
       ],
       "args": [

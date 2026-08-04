@@ -33,7 +33,7 @@ Legend: 🔲 planned · 🟡 in progress (blocked on operator-side step) · ✅ 
 
 - [x] **R1** Proof-generation failures handled gracefully with clear errors. (Chunk 5, CLI+SDK return typed errors)
 - [x] **R2** Partial approvals (< M) preserved and resumable across client restarts → on-chain nullifier set is source of truth. (Chunk 2, 5)
-- [x] **R3** Deterministic, documented error codes for all invalid-proof and double-vote scenarios → `QuorumError` contract 1001–1013 (`docs/ERROR_CODES.md`). (Chunk 2, 4)
+- [x] **R3** Deterministic, documented error codes for all invalid-proof and double-vote scenarios → `QuorumError` 1001–1013, `RuleError` 2001–2004, `CircuitError` 3001–3008, `GateError` 4001–4012 (`docs/ERROR_CODES.md`). (Chunk 2, 4)
 
 ## Performance
 
@@ -42,10 +42,10 @@ Legend: 🔲 planned · 🟡 in progress (blocked on operator-side step) · ✅ 
 ## Supportability
 
 - [ ] **S1** Program deployed + tested on LEZ devnet/testnet. 🟡 → SPEL program compiles + IDL generated; deployment transaction needs a funded wallet (operator-side).
-- [x] **S2** End-to-end integration tests run against a LEZ sequencer (standalone mode), included in CI → CI workflow has `check` (fmt/clippy/tests) + `real-proof` jobs; standalone-sequencer job gated on wallet availability.
+- [x] **S2** End-to-end integration tests run against a LEZ sequencer (standalone mode), included in CI → CI workflow has `check` (fmt/clippy/tests) + `real-proof` jobs; a standalone-sequencer integration job is **planned** (gated on wallet availability) but not yet in the workflow.
 - [ ] **S3** CI green on default branch. 🟡 → workflow in `.github/workflows/ci.yml`, strict (`-D warnings`), **passes locally**; hosted runs blocked by the GitHub account billing lock (same as LP-0005) until operator unlocks.
 - [x] **S4** README: deployment steps, program addresses, CLI + Basecamp instructions. (Chunk 8)
-- [ ] **S5** Reproducible e2e demo script works against a real local sequencer with `RISC0_DEV_MODE=0`. 🟡 → `scripts/regenerate-evidence.sh` runs fmt+clippy+tests+real proof+demo; `RISC0_DEV_MODE=1` demo verified, real-proof example verified locally; on-chain/sequencer evidence pending deploy.
+- [ ] **S5** Reproducible e2e demo script works against a real local sequencer with `RISC0_DEV_MODE=0`. 🟡 → `scripts/regenerate-evidence.sh` runs fmt+clippy+tests+real proof+demo; `RISC0_DEV_MODE=1` demo verified, real-proof example verified locally under the pinned image ID; on-chain/sequencer evidence pending deploy.
 - [ ] **S6** Recorded narrated video demo showing terminal output incl. proof generation (`RISC0_DEV_MODE=0`). (Chunk 9 — operator records)
 
 ## Submission requirements (write-up must cover)
@@ -62,7 +62,7 @@ Legend: 🔲 planned · 🟡 in progress (blocked on operator-side step) · ✅ 
 
 - [x] **B1** Shielded member rotation — new member root; old key provably dead (version-bound nullifiers; demo shows constitution v2 + old-set approvals rejected). Marker-PDA re-derivation pending testnet deploy. (Chunk 2, 4, 6)
 - [x] **B2** Tiered spending — per-category thresholds + amount caps, categories committed. (Chunk 2, 6)
-- [x] **B3** Single aggregated recursive threshold proof (not N proofs) → same guest proves M approvals; per-member fast mode also supported. (Chunk 3)
+- [x] **B3** Single aggregated recursive threshold proof (not N proofs) → same guest proves M approvals; shipped in the CLI/SDK as `quorum approve-all --members 0,1` / `Multisig::approve_many`; per-member fast mode also supported. (Chunk 3)
 - [x] **B4** `scripts/regenerate-evidence.sh` — evidence survives testnet resets. (Chunk 6)
 - [ ] **B5** 4 reference integrations (governance consumer, treasury, inheritance/will, token-gated community). (Chunk 6–7 — CLI/SDK + Basecamp shipped; standalone consumers pending)
 - [x] **B6** ADRs (`docs/adr/`) + `BUGS_FILED.md` + crates published to crates.io. (Chunk 8 — ADRs done; crates.io publish is a one-command operator step `cargo publish --workspace`)

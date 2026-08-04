@@ -1,0 +1,12 @@
+{
+  "name": "quorum_ui",
+  "display_name": "Quorum Multisig",
+  "version": "0.1.0",
+  "type": "ui_qml",
+  "category": "privacy",
+  "description": "Private M-of-N multisig for LEZ: shielded proposals, approvals, rotation, and tiered spending",
+  "author": "FidelCoder",
+  "view": "qml/QuorumView.qml",
+  "icon": null,
+  "dependencies": ["lez_core"]
+}

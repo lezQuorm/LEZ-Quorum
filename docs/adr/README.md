@@ -36,7 +36,7 @@ truth.
 
 # ADR-0003 — One aggregated threshold proof per on-chain claim
 
-**Status:** Accepted (Chunk 3)
+**Status:** Accepted (Chunk 3); aggregated path shipped in CLI/SDK (post-Chunk-8 hardening)
 
 **Context.** The public PoC attributes each vote on-chain. LP-0002 asks for a
 threshold confirmation without attribution; a naive "one proof per approval"
@@ -48,8 +48,9 @@ member root, the proposal's tier threshold, and the tier amount cap.
 
 **Consequences.** Only a nullifier set grows on-chain; no per-member artifact
 exists. Proving is heavier per claim but amortizes across M approvals. The
-current implementation supports both per-member proving (fast, one path) and
-the aggregated path (single receipt) via the same guest.
+implementation supports both per-member proving (fast, one path) and the
+aggregated path (single receipt) via the same guest — exposed as
+`quorum approve-all --members 0,1` and `Multisig::approve_many` (B3).
 
 # ADR-0004 — Rotation is atomic with revocation
 

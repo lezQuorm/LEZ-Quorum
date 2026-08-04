@@ -56,6 +56,8 @@ Every layer exposes stable, documented codes (LP-0002 reliability criterion).
 | 4008 | `RotationWouldBreakThreshold` | rotation breaks threshold |
 | 4009 | `InvalidThresholdChange` | threshold out of range |
 | 4010 | `StaleConstitution` | proof bound to an older constitution |
+| 4011 | `TierCapMismatch` | journal tier cap ≠ constitution tier cap |
+| 4012 | `InvalidVault` | vault account is not the treasury PDA |
 
 ## On-chain program (`fail` codes)
 

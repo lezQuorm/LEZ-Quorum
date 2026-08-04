@@ -1,7 +1,5 @@
 # Quorum — Architecture
 
-*Status: draft (Chunk 0). Expanded as each chunk lands.*
-
 ## Components
 
 ```
@@ -37,7 +35,8 @@
 
 Supporting crates: `quorum-core` (domain model, this repo), `lez-compat`
 (LEZ v0.3 commitment/Merkle semantics), `quorum-image-id` (verifier
-constants), `quorum-verifier` (off-chain receipt verification).
+constants), `quorum-prover` (host-side proving + off-chain receipt
+verification).
 
 ## Data flow (2-of-3 treasury transfer)
 
@@ -50,11 +49,34 @@ constants), `quorum-verifier` (off-chain receipt verification).
 4. **Verify & gate** — the receipt is submitted in a **privacy-preserving
    transaction**; `quorum-gate` verifies it against the pinned circuit ID and
    the current `member_root`, appends nullifiers, and on reaching the tier
-   threshold emits the gated action (token transfer / rotation / threshold change).
+   threshold applies the gated action. A `Transfer` is **executed by chaining
+   into the treasury vault's token program** (`ChainedCall`): the gate marks
+   the proposal executed and emits the call, the vault holding is authorized
+   via its PDA seed, and the token program moves the funds — the gate never
+   handles balances itself.
 5. **Rotate** (Idea 02 differentiator) — a `RotateMembers` proposal swaps
    `member_root` for a new one in the same verified transition. Old members'
    nullifiers/keys become unprovable; a marker-PDA re-derived under the **old**
    threshold lands on an **unclaimed** address — on-chain proof the old set is dead.
+
+## On-chain transfer execution
+
+A treasury `Transfer` is not executed by the gate directly (it owns no
+balances). On `Execute`, the SPEL guest:
+
+1. Derives the treasury vault PDA seed: `SHA256("quorum/vault/v1" || multisig_id)`
+   (`quorum_gate_core::vault_pda_seed`) and rejects a caller-supplied vault that
+   is not this PDA (`GateError::InvalidVault`, 4012).
+2. Serializes `token_core::Instruction::Transfer` via a serde mirror
+   (`TokenTransferInstruction`; byte-identical under risc0 serde) with the
+   action's `amount`.
+3. Emits `ChainedCall { program_id: vault.program_owner, pre_states:
+   [vault(authorized), recipient], pda_seeds: [vault_seed] }` — the token
+   program moves `amount` from the vault holding to the recipient. Governance
+   actions (rotation / threshold change) emit no call.
+
+The vault account itself is created and funded as a deployment step (see
+`docs/DEPLOYMENT.md`); the gate only ever *authorizes* its movement.
 
 ## Restart-safe approvals
 

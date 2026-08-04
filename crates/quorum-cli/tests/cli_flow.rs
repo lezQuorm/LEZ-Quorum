@@ -1,0 +1,243 @@
+//! End-to-end CLI integration tests (`RISC0_DEV_MODE=1`, fast dev proofs).
+//!
+//! These exercise the real `quorum` binary the same way `scripts/demo.sh` does:
+//! create → propose → aggregated approve-all → execute → rotate → old key dead.
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+fn quorum() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_quorum"));
+    command.env("RISC0_DEV_MODE", "1");
+    command
+}
+
+fn run(dir: &Path, args: &[&str]) -> Output {
+    quorum()
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("failed to spawn quorum CLI")
+}
+
+fn run_ok(dir: &Path, args: &[&str]) -> String {
+    let out = run(dir, args);
+    assert!(
+        out.status.success(),
+        "`quorum {}` failed\nstdout: {}\nstderr: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+fn run_err(dir: &Path, args: &[&str]) -> String {
+    let out = run(dir, args);
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !out.status.success(),
+        "`quorum {}` unexpectedly succeeded\n{combined}",
+        args.join(" ")
+    );
+    combined
+}
+
+fn workdir(name: &str) -> PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "quorum-cli-it-{name}-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    dir
+}
+
+const RECIPIENT: &str = "0909090909090909090909090909090909090909090909090909090909090909";
+
+#[test]
+fn full_flow_with_aggregated_approval() {
+    let dir = workdir("aggregated");
+    let tiers = r#"[{"id":1,"threshold":2,"max_amount":1000}]"#;
+
+    let stdout = run_ok(
+        &dir,
+        &[
+            "create",
+            "--threshold",
+            "2",
+            "--members",
+            "3",
+            "--tiers",
+            tiers,
+        ],
+    );
+    assert!(stdout.contains("member_root:"), "create output: {stdout}");
+
+    run_ok(
+        &dir,
+        &[
+            "propose",
+            "--action",
+            "transfer",
+            "--recipient",
+            RECIPIENT,
+            "--amount",
+            "500",
+            "--tier",
+            "1",
+        ],
+    );
+
+    // ONE aggregated proof for both members (B3 mode).
+    let stdout = run_ok(
+        &dir,
+        &["approve-all", "--proposal", "0", "--members", "0,1"],
+    );
+    assert!(
+        stdout.contains("aggregated approval recorded for proposal 0 (2 members, one proof)"),
+        "approve-all output: {stdout}"
+    );
+    assert!(
+        dir.join("claims").join("claim-0-aggregated.json").exists(),
+        "aggregated claim artifact missing"
+    );
+
+    run_ok(&dir, &["execute", "--proposal", "0"]);
+    let stdout = run_ok(&dir, &["info"]);
+    assert!(stdout.contains("Executed"), "info output: {stdout}");
+}
+
+#[test]
+fn per_member_approval_and_double_vote_rejection() {
+    let dir = workdir("per-member");
+    let tiers = r#"[{"id":1,"threshold":2,"max_amount":1000}]"#;
+    run_ok(
+        &dir,
+        &[
+            "create",
+            "--threshold",
+            "2",
+            "--members",
+            "3",
+            "--tiers",
+            tiers,
+        ],
+    );
+    run_ok(
+        &dir,
+        &[
+            "propose",
+            "--action",
+            "transfer",
+            "--recipient",
+            RECIPIENT,
+            "--amount",
+            "500",
+            "--tier",
+            "1",
+        ],
+    );
+
+    let stdout = run_ok(&dir, &["approve", "--member", "0", "--proposal", "0"]);
+    assert!(
+        stdout.contains("approval recorded"),
+        "approve output: {stdout}"
+    );
+    assert!(dir.join("claims").join("claim-0-0.json").exists());
+
+    // Same member twice → deterministic double-vote rejection.
+    let stdout = run_err(&dir, &["approve", "--member", "0", "--proposal", "0"]);
+    assert!(
+        stdout.contains("duplicate nullifier") || stdout.contains("1005"),
+        "expected double-vote rejection, got: {stdout}"
+    );
+
+    run_ok(&dir, &["approve", "--member", "1", "--proposal", "0"]);
+    run_ok(&dir, &["execute", "--proposal", "0"]);
+}
+
+#[test]
+fn rotated_member_key_is_dead() {
+    let dir = workdir("rotation");
+    let tiers = r#"[{"id":1,"threshold":2,"max_amount":1000}]"#;
+    run_ok(
+        &dir,
+        &[
+            "create",
+            "--threshold",
+            "2",
+            "--members",
+            "3",
+            "--tiers",
+            tiers,
+        ],
+    );
+    run_ok(
+        &dir,
+        &[
+            "propose",
+            "--action",
+            "transfer",
+            "--recipient",
+            RECIPIENT,
+            "--amount",
+            "500",
+            "--tier",
+            "1",
+        ],
+    );
+    run_ok(&dir, &["approve", "--member", "0", "--proposal", "0"]);
+    run_ok(&dir, &["approve", "--member", "1", "--proposal", "0"]);
+    run_ok(&dir, &["execute", "--proposal", "0"]);
+
+    // Rotate to a fresh random 3-member set.
+    let stdout = run_ok(&dir, &["new-root", "--members", "3"]);
+    let new_root = stdout.trim();
+    run_ok(
+        &dir,
+        &[
+            "propose",
+            "--action",
+            "rotate",
+            "--new-member-root",
+            new_root,
+            "--new-member-count",
+            "3",
+        ],
+    );
+    run_ok(&dir, &["approve", "--member", "0", "--proposal", "1"]);
+    run_ok(&dir, &["approve", "--member", "2", "--proposal", "1"]);
+    run_ok(&dir, &["execute", "--proposal", "1"]);
+
+    let stdout = run_ok(&dir, &["info"]);
+    assert!(stdout.contains("constitution v2"), "info output: {stdout}");
+
+    // A member of the OLD set can no longer approve (no valid Merkle path).
+    run_ok(
+        &dir,
+        &[
+            "propose",
+            "--action",
+            "transfer",
+            "--recipient",
+            RECIPIENT,
+            "--amount",
+            "100",
+            "--tier",
+            "1",
+        ],
+    );
+    let stdout = run_err(&dir, &["approve", "--member", "1", "--proposal", "2"]);
+    assert!(
+        stdout.contains("InvalidMembership") || stdout.contains("3005"),
+        "expected invalid-membership rejection, got: {stdout}"
+    );
+}

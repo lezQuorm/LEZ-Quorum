@@ -2,12 +2,12 @@
 
 use quorum_gate_core::{
     apply_action, apply_approved_claim, check_claim, decode_constitution, decode_proposal,
-    encode_constitution, encode_proposal, ConstitutionState, ProposalState, ProposalStatus,
-    QuorumInstruction, ThresholdClaim, THRESHOLD_IMAGE_ID,
+    encode_constitution, encode_proposal, ActionData, ConstitutionState, GateError,
+    ProposalState, ProposalStatus, ThresholdClaim, THRESHOLD_IMAGE_ID,
 };
 use nssa_core::{
-    account::AccountWithMetadata,
-    program::{AccountPostState, Claim},
+    account::{AccountId, AccountWithMetadata},
+    program::{AccountPostState, ChainedCall, Claim, PdaSeed},
 };
 use risc0_zkvm::{guest::env, serde::to_vec};
 use spel_framework::prelude::*;
@@ -53,6 +53,28 @@ mod quorum_gate {
         let mut constitution = decode_constitution(&multisig.account.data)
             .unwrap_or_else(|_| fail(2005, "cannot decode constitution state"));
         constitution.validate().unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
+
+        // The tier amount cap is constitution policy: re-derive it from on-chain
+        // tier state so a caller can never store an inflated cap in the proposal.
+        let action = match action {
+            ActionData::Transfer {
+                recipient,
+                amount,
+                tier_id,
+                ..
+            } => {
+                let tier = constitution
+                    .tier(tier_id)
+                    .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
+                ActionData::Transfer {
+                    recipient,
+                    amount,
+                    tier_id,
+                    tier_max_amount: tier.max_amount,
+                }
+            }
+            other => other,
+        };
 
         let threshold = constitution
             .required_threshold(&action)
@@ -117,9 +139,11 @@ mod quorum_gate {
 
     #[instruction]
     pub fn execute(
-        _ctx: ProgramContext,
+        ctx: ProgramContext,
         #[account(mut, owner = self_program_id)] mut multisig: AccountWithMetadata,
         #[account(mut, owner = self_program_id)] mut proposal: AccountWithMetadata,
+        #[account(mut)] vault: AccountWithMetadata,
+        #[account(mut)] recipient: AccountWithMetadata,
         proposal_id: u64,
     ) -> SpelResult {
         let _ = proposal_id;
@@ -148,7 +172,34 @@ mod quorum_gate {
         output.post_states = vec![
             AccountPostState::new(multisig.account),
             AccountPostState::new(proposal.account),
+            AccountPostState::new(vault.account.clone()),
+            AccountPostState::new(recipient.account.clone()),
         ];
+
+        // A fully-approved Transfer is executed by chaining into the treasury
+        // vault's token program: the vault holding is the sender (authorized
+        // via its PDA seed), the action recipient is the target account.
+        // Governance actions (rotation / threshold change) emit no call.
+        if let ActionData::Transfer { amount, .. } = &state.action {
+            let seed = quorum_gate_core::vault_pda_seed(multisig.account_id.value());
+            let expected_vault =
+                AccountId::for_public_pda(&ctx.self_program_id, &PdaSeed::new(seed));
+            if vault.account_id != expected_vault {
+                fail(GateError::InvalidVault.code() as u16, &GateError::InvalidVault.to_string());
+            }
+            let mut vault_for_callee = vault;
+            vault_for_callee.is_authorized = true;
+            let call = ChainedCall::new(
+                vault_for_callee.account.program_owner,
+                vec![vault_for_callee, recipient],
+                &quorum_gate_core::TokenTransferInstruction::Transfer {
+                    amount_to_transfer: u128::from(*amount),
+                },
+            )
+            .with_pda_seeds(vec![PdaSeed::new(seed)]);
+            output.chained_calls.push(call);
+        }
+
         Ok(output)
     }
 

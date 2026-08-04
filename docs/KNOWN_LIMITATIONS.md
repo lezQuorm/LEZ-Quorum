@@ -3,17 +3,18 @@
 Honest disclosure of current limitations. Each item notes the impact and the
 planned path to resolve it.
 
-## 1. Per-member proof mode is the default in the CLI
+## 1. Per-member mode is the CLI default; aggregation is a separate command
 
-The SDK and CLI currently generate **one proof per approval** (fast, ~6 min
-real proving per approval). The aggregated single-proof mode (M approvals in
-one receipt) is implemented in the circuit design but the CLI records claims
-per-member.
+The CLI offers **both** modes: `quorum approve --member i --proposal p`
+(one proof per approval, fast) and `quorum approve-all --proposal p --members
+0,1` — **M approvals in a single receipt** (B3 mode, same guest, same image
+ID). The SDK mirrors this as `Multisig::approve` / `Multisig::approve_many`.
 
-- **Impact:** M on-chain claim transactions (one per approval) rather than one;
-  only nullifiers are recorded either way — no identity leakage.
-- **Path:** add an `--aggregate` CLI flag that batches approvals into one
-  receipt before the on-chain `approve` call (same guest, same image ID).
+- **Impact:** per-member mode costs M on-chain claim transactions; aggregated
+  mode costs one. Only nullifiers are recorded either way — no identity
+  leakage. Each real proof is ~7 min on commodity hardware.
+- **Path:** the aggregated path is what the demo (`scripts/demo.sh`) and the
+  CLI integration tests exercise.
 
 ## 2. Testnet deployment requires a funded LEZ wallet
 
@@ -35,7 +36,7 @@ Risc0 guest cycles and real proof timings instead of network CU.
 - **Impact:** P1 (CU cost per operation) is partially met; proof cycles map
   directly to LEZ verification cost.
 - **Path:** extend `docs/evidence/LEZ_TESTNET_COSTS.md` when the RPC exposes
-  CU metadata.
+  CU metadata (the directory now exists, ready for post-deploy evidence).
 
 ## 4. Proof time is dominated by SHA-256 Merkle paths
 
@@ -63,3 +64,14 @@ wrapper over the CLI/SDK — see its README for build/load instructions.
 The same strict CI (`fmt` + clippy `-D warnings` + tests) passes locally;
 hosted jobs depend on the account-level billing state (same issue the LP-0005
 submission hit).
+
+## 8. On-chain transfer execution is wired but untested against a live sequencer
+
+The `Execute` handler now emits a `ChainedCall` into the treasury vault's
+token program (vault PDA validated, error 4012; serde mirror of
+`token_core::Instruction::Transfer`). The logic is unit-tested and the guest
+compiles, but it has **not** been exercised against a live LEZ sequencer or
+on-chain state machine — that verification is part of the operator's testnet
+run (Chunk 6), and depends on a funded wallet. The treasury vault must also be
+created and funded as a deployment step (`docs/DEPLOYMENT.md` §4) — the gate
+only authorizes movement, it never holds or mints balances.

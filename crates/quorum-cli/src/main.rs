@@ -12,6 +12,8 @@
 //! quorum approve --member 1 --proposal 0
 //! quorum execute --proposal 0
 //! quorum info
+//! # Aggregated single-proof mode (B3): M approvals in ONE receipt
+//! quorum approve-all --proposal 0 --members 0,1
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -92,6 +94,16 @@ enum Command {
         #[arg(long)]
         proposal: u64,
     },
+    /// Generate ONE aggregated threshold proof for several members (B3:
+    /// M distinct approvals in a single receipt, single on-chain claim).
+    ApproveAll {
+        /// Proposal id.
+        #[arg(long)]
+        proposal: u64,
+        /// Comma-separated member indexes, e.g. `0,1`.
+        #[arg(long)]
+        members: String,
+    },
     /// Execute a proposal once the threshold is met.
     Execute {
         /// Proposal id.
@@ -147,6 +159,7 @@ fn run() -> Result<(), String> {
             new_threshold,
         ),
         Command::Approve { member, proposal } => approve(member, proposal),
+        Command::ApproveAll { proposal, members } => approve_all(proposal, &members),
         Command::Execute { proposal } => execute(proposal),
         Command::Reject { proposal } => reject(proposal),
         Command::Info => info(),
@@ -258,6 +271,48 @@ fn approve(member_index: usize, proposal_id: u64) -> Result<(), String> {
         "approval recorded for proposal {proposal_id} (nullifier {})",
         hex(&proof.journal.nullifiers[0])
     );
+    println!("claim written: {}", claim_path.display());
+    Ok(())
+}
+
+fn approve_all(proposal_id: u64, members_csv: &str) -> Result<(), String> {
+    let mut state = load_state()?;
+    let indexes: Vec<usize> = members_csv
+        .split(',')
+        .map(|s| {
+            s.trim()
+                .parse::<usize>()
+                .map_err(|e| format!("invalid member index '{s}': {e}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if indexes.is_empty() {
+        return Err("--members must list at least one index".into());
+    }
+    let members: Vec<Member> = indexes
+        .iter()
+        .map(|&index| {
+            let secret = load_secret(index)?;
+            Ok(Member { index, secret })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let member_refs: Vec<&Member> = members.iter().collect();
+
+    let proof = state
+        .multisig
+        .approve_many(proposal_id, &state.commitments, &member_refs)
+        .map_err(|e| e.to_string())?;
+    write_state(&state)?;
+
+    let claim_path = Path::new(CLAIMS_DIR).join(format!("claim-{proposal_id}-aggregated.json"));
+    let claim = serde_json::to_string_pretty(&proof).map_err(|e| e.to_string())?;
+    write_private(&claim_path, claim.as_bytes())?;
+
+    let nullifiers: Vec<String> = proof.journal.nullifiers.iter().map(|n| hex(n)).collect();
+    println!(
+        "aggregated approval recorded for proposal {proposal_id} ({} members, one proof)",
+        proof.journal.approval_count
+    );
+    println!("nullifiers: {nullifiers:?}");
     println!("claim written: {}", claim_path.display());
     Ok(())
 }

@@ -19,6 +19,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+quorum-image-id = { path = "../quorum-image-id" }
 
 [lints]
 workspace = true

@@ -6,9 +6,11 @@ Quorum is a privacy-first treasury primitive: M-of-N shielded members approve
 proposals, **nobody learns who voted or who is in the set**, and membership can
 **evolve privately** (rotation) with **tiered spending** policies.
 
-> Status: **All chunks complete** (see [`PLAN.md`](PLAN.md) and
-> [`criteria-checklist.md`](criteria-checklist.md)). Chunks 0–8 ✅; Chunk 9
-> (testnet deployment, video, solution PR) needs operator-side wallet/video.
+> Status: **Implementation complete** (see [`PLAN.md`](PLAN.md) and
+> [`criteria-checklist.md`](criteria-checklist.md)). Chunks 0–8 ✅;
+> solution PR opened (`logos-co/lambda-prize#120`). Remaining evidence is
+> operator-side: testnet deploy (funded LEZ wallet), hosted-CI unlock
+> (GitHub billing), crates.io publish, and the narrated video.
 
 ## Why not the existing PoC?
 
@@ -53,7 +55,12 @@ LEZ-Quorum/
 ```bash
 cargo build -p quorum-cli
 RISC0_DEV_MODE=1 ./scripts/demo.sh      # fast local demo (dev-mode proofs)
-RISC0_DEV_MODE=0 cargo run -p quorum-prover --example prove_threshold --release   # real proof (~6 min)
+RISC0_DEV_MODE=0 cargo run -p quorum-prover --example prove_threshold --release   # real proof (~7 min)
+# CLI flow (per-member or aggregated single-proof):
+quorum create --threshold 2 --members 3
+quorum propose --action transfer --recipient <hex> --amount 500 --tier 1
+quorum approve-all --proposal 0 --members 0,1   # ONE aggregated receipt (B3)
+quorum execute --proposal 0
 ```
 
 ## Build & test
@@ -62,13 +69,6 @@ RISC0_DEV_MODE=0 cargo run -p quorum-prover --example prove_threshold --release 
 cargo fmt --check
 RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets -- -D warnings
 RISC0_DEV_MODE=1 cargo test --workspace
-```
-
-## Build & test
-
-```bash
-cargo test --workspace      # unit tests (RISC0_DEV_MODE unset — core is pure Rust)
-cargo clippy --workspace    # lints
 ```
 
 ## License
@@ -89,4 +89,4 @@ Licensed under either of Apache-2.0 or MIT, at your option.
 - [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) — honest disclosure
 - [`docs/adr/`](docs/adr/) — architecture decision records (ADR-0001..0006)
 - [`BUGS_FILED.md`](BUGS_FILED.md) — upstream findings
-- [`references/lez-multisig/`](../references/lez-multisig/) — the public PoC we replace
+- [`jimmy-claw/lez-multisig`](https://github.com/jimmy-claw/lez-multisig) — the public PoC we replace

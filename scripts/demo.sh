@@ -26,16 +26,13 @@ echo "== 1. create 2-of-3 multisig =="
 echo "== 2. propose treasury transfer (tier 1, 500) =="
 "$Q" propose --action transfer --recipient "$RECIPIENT" --amount 500 --tier 1
 
-echo "== 3. member 0 approves (client-side proof) =="
-"$Q" approve --member 0 --proposal 0
+echo "== 3. members 0 and 1 approve in ONE aggregated proof (B3 mode) =="
+"$Q" approve-all --proposal 0 --members 0,1
 
-echo "== 4. member 1 approves -> threshold reached =="
-"$Q" approve --member 1 --proposal 0
-
-echo "== 5. execute =="
+echo "== 4. execute (threshold reached) =="
 "$Q" execute --proposal 0
 
-echo "== 6. rotate the member set (Idea 02: new root, nothing else) =="
+echo "== 5. rotate the member set (Idea 02: new root, nothing else) =="
 NEW_ROOT="$("$Q" new-root --members 3)"
 echo "   new member root: $NEW_ROOT"
 "$Q" propose --action rotate --new-member-root "$NEW_ROOT" --new-member-count 3
@@ -43,12 +40,22 @@ echo "   new member root: $NEW_ROOT"
 "$Q" approve --member 2 --proposal 1
 "$Q" execute --proposal 1
 
-echo "== 7. final state =="
+echo "== 6. final state =="
 "$Q" info
+
+echo "== 7. a rotated-out member's key is provably dead =="
+"$Q" propose --action transfer --recipient "$RECIPIENT" --amount 100 --tier 1
+if APPROVE_OUT="$("$Q" approve --member 1 --proposal 2 2>&1)"; then
+  echo "ERROR: a rotated-out member could still approve — security property broken!"
+  exit 1
+fi
+echo "PASS: member 1 (old set) rejected after rotation"
+echo "   $APPROVE_OUT"
 
 echo
 echo "demo artifacts: $(ls claims/ | tr '\n' ' ')"
 echo "NOTE: RISC0_DEV_MODE=$RISC0_DEV_MODE — set 0 for real proofs."
 # (A full member-set rotation is shown here; the single-member-swap case with a
 #  removed key provably dead is covered by the rotation_flow_updates_constitution
-#  SDK test.)
+#  SDK test. Distributing new member secret files after a rotation is an
+#  operator step — see docs/DEPLOYMENT.md.)

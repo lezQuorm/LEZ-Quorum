@@ -13,13 +13,13 @@
 ## How it's achieved
 
 - **Shielded membership.** Each member commits to an identity secret:
-  `member_commitment = H("conclave/v1/member" ‖ secret)`. The multisig stores only
+  `member_commitment = H("quorum/v1/member" ‖ secret)`. The multisig stores only
   `member_root = MerkleRoot(member_commitments)`. Membership is proven in-ZK with a
   Merkle path (`quorum-circuit`), so no plaintext member list exists anywhere on-chain.
 
 - **Anonymous approval.** A member's approval is a Risc0 proof that their commitment
   is in the root and that their **nullifier** is correctly derived:
-  `nullifier = H("conclave/v1/nullifier" ‖ secret ‖ proposal_id ‖ version)`. The
+  `nullifier = H("quorum/v1/nullifier" ‖ secret ‖ proposal_id ‖ version)`. The
   nullifier is public (it must be, for double-vote prevention) but is a one-way
   hash of the secret — unlinkable to the member.
 
