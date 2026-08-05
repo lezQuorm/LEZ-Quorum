@@ -5,6 +5,7 @@ members = [
     "crates/lez-compat",
     "crates/quorum-circuit",
     "crates/quorum-prover",
+    "crates/quorum-composer",
     "crates/quorum-image-id",
     "crates/quorum-gate-core",
     "guests/quorum-threshold",
@@ -34,6 +35,7 @@ quorum-core = { path = "crates/quorum-core" }
 lez-compat = { path = "crates/lez-compat" }
 quorum-circuit = { path = "crates/quorum-circuit" }
 quorum-prover = { path = "crates/quorum-prover" }
+quorum-composer = { path = "crates/quorum-composer" }
 quorum-image-id = { path = "crates/quorum-image-id" }
 quorum-threshold-methods = { path = "guests/quorum-threshold" }
 risc0-zkvm = { version = "=3.0.5", default-features = false, features = ["std", "client"] }

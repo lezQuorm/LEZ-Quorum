@@ -200,6 +200,7 @@ mod tests {
                 .expect("member proof");
             MemberApprovalWitness {
                 member_secret: secret,
+                account_identifier: 0,
                 leaf_index: p.leaf_index,
                 siblings: p.siblings,
             }

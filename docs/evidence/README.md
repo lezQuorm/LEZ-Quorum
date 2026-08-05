@@ -11,7 +11,10 @@ artifacts. No live LEZ deployment evidence has been recorded yet.
 
 Locally reproducible evidence currently consists of:
 
-- the real proving example documented in ../BENCHMARKS.md;
+- the credential-aware real proving example documented in ../BENCHMARKS.md;
+- the compiled gate and LEZ privacy-circuit composition tests in
+  `quorum-composer`;
+- the complete IDL and generated-client contract test in `quorum-gate-methods`;
 - the dev-mode end-to-end workflow in ../../scripts/demo.sh; and
 - workspace and CLI integration tests.
 

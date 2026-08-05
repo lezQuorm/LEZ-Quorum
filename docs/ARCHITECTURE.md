@@ -1,118 +1,99 @@
 # Architecture
 
-Quorum separates private approval proving from public policy enforcement. The
-same pure gate logic is used by the local SDK and the SPEL program, which keeps
-state-transition tests independent of network integration.
+Quorum separates private credential proving, program policy enforcement, and
+network submission. The local SDK and SPEL program share deterministic gate
+logic, while the composer is responsible for the two levels of Risc0 receipt
+composition required by LEZ.
 
-~~~text
-member secrets
-     |
-     v
-quorum-cli / quorum-sdk
-     |
-     | ThresholdWitness
-     v
-quorum-threshold guest ---> Risc0 receipt + public journal
-                                      |
-                                      | transaction assumption (pending builder)
-                                      v
-                               quorum-gate SPEL
-                                      |
-                         +------------+-------------+
-                         |                          |
-                  constitution update       token chained call
-~~~
+```text
+LEZ nullifier secret + Merkle path
+                 |
+                 v
+        quorum-threshold guest
+                 |
+        receipt + public journal
+                 |
+                 v  receipt assumption
+          quorum-gate SPEL guest
+                 |
+        unconditional gate receipt
+                 |
+                 v  receipt assumption
+          LEZ privacy circuit
+                 |
+       private LEZ transaction
+                 |
+                 v
+        sequencer RPC (optional)
+```
 
-## Components
+## Client and proof layers
 
-### Client layer
+`quorum-sdk` creates member sets, builds credential-aware Merkle witnesses,
+invokes the prover, and mirrors state for offline workflows. `quorum-cli`
+persists that mirror, protected member files, receipt artifacts, and rotation
+bundles.
 
-**quorum-sdk** creates member sets, mirrors constitution and proposal state,
-builds Merkle witnesses, invokes the prover, and checks returned journals.
-**quorum-cli** persists the local mirror, private member files, proof artifacts,
-and replacement rotation bundles.
+`quorum-circuit` evaluates the threshold statement as pure Rust.
+`quorum-threshold` commits the journal in a Risc0 guest. `quorum-prover`
+creates succinct receipts and verifies the pinned image ID before returning an
+artifact.
 
-### Proof layer
+Each approval proves:
 
-**quorum-circuit** evaluates the threshold statement as pure Rust.
-**quorum-threshold** commits the resulting journal in a Risc0 guest.
-**quorum-prover** creates succinct receipts and verifies the pinned image ID on
-the host.
+- knowledge of an LEZ nullifier secret key;
+- derivation of the corresponding regular private account ID;
+- membership of the credential commitment under the active member root;
+- a distinct proposal- and constitution-bound nullifier; and
+- satisfaction of the requested threshold and circuit-level action rules.
 
-The proof establishes that every supplied approval:
+## Gate layer
 
-- derives from a secret committed under the active member root;
-- has a valid Merkle path;
-- produces a distinct nullifier for the proposal and constitution version;
-- contributes to the required threshold; and
-- approves an action that satisfies its circuit-level policy checks.
+`quorum-gate-core` owns serializable state and deterministic validation rules.
+`quorum-gate` exposes initialize, propose, approve, and execute instructions.
 
-### Gate layer
+Approve takes the multisig, proposal, and a variable-length list of authorized
+private credential accounts. The gate checks their proposal-scoped account-ID
+commitments against the threshold journal, verifies the threshold receipt
+assumption, updates proposal nullifiers, and returns every account in LEZ's
+required positional order.
 
-**quorum-gate-core** owns the serializable state and deterministic validation
-rules. **quorum-gate** is the SPEL guest that exposes initialize, propose,
-approve, and execute instructions.
+The gate rejects cross-multisig proposals, stale versions, mismatched proposal
+IDs, inflated tier caps, duplicate nullifiers, credential substitution,
+invalid vaults, and recipient substitution.
 
-A constitution is bound to its multisig account ID. Every proposal is bound to
-that multisig ID and the exact constitution version at creation. Approval and
-execution reject cross-multisig proposals, stale proposals, mismatched
-instruction IDs, inflated tier caps, duplicate nullifiers, invalid vaults, and
-recipient substitution.
+## Composer and network layer
 
-There is no unauthenticated reject instruction. Proposals leave the active
-state only through threshold-authorized execution.
+`quorum-composer` performs the receipt composition boundary:
 
-### LEZ compatibility layer
+1. verify and decode the threshold artifact against the pinned image;
+2. verify proposal and credential-account bindings;
+3. prove the gate with the threshold receipt as an assumption;
+4. pass the gate receipt to the LEZ privacy circuit;
+5. prove private account authorization and post-state encryption; and
+6. build a signed `PrivacyPreservingTransaction`.
 
-**lez-compat** models LEZ v0.3 account commitments, Merkle semantics, nonce
-progression, and owner stability. It is tested independently but is not yet
-connected to the Quorum membership witness. The current circuit proves
-knowledge of a Quorum member secret, not control of a live shielded LEZ
-account credential.
+Its optional `network` feature uses the pinned LEZ v0.2 sequencer RPC to submit
+once, confirm by transaction hash, and read public account state. Private
+credential reconciliation is a wallet scan of encrypted outputs and new
+commitments; private account IDs are not public state lookup keys.
 
-## State
+## State and execution
 
-The constitution stores:
+The constitution stores the multisig ID, version, proposal counter, threshold,
+member count, credential root, and spending tiers. A proposal stores its
+multisig ID, version, action, required threshold, accepted nullifiers, and
+status.
 
-- owning multisig account ID;
-- constitution version and proposal counter;
-- default threshold and member count;
-- member commitment root; and
-- transfer tier thresholds and caps.
+Rotation atomically replaces the root and member count and increments the
+version, making old proposals and credentials stale. Transfer execution
+derives the treasury vault PDA from the multisig ID, validates the approved
+recipient, and emits a token-program chained call authorized by the vault PDA
+seed.
 
-A proposal stores:
+## Verification boundary
 
-- owning multisig account ID;
-- proposal ID and constitution version;
-- action and required threshold;
-- accepted nullifiers; and
-- active or executed status.
-
-A rotation increments the constitution version and replaces the member root
-and count in one validated transition. Proposals created under the prior
-version become stale.
-
-## Transfer execution
-
-For transfer proposals, execute validates the runtime recipient against the
-approved recipient and derives the treasury vault PDA from the multisig ID.
-The gate then emits a token-program chained call with the vault authorized by
-its PDA seed. Rotation and threshold changes update constitution state without
-emitting a token call.
-
-## Receipt composition boundary
-
-The SPEL guest calls Risc0 env::verify with the pinned threshold image ID and
-journal. In nested Risc0 execution, that verifies an assumption supplied to the
-outer executor; it does not deserialize the receipt bytes in the instruction.
-
-A production transaction composer must therefore:
-
-1. decode and verify the client threshold receipt;
-2. bind its journal to the approve instruction;
-3. add the receipt to the SPEL executor assumptions; and
-4. submit the resulting LEZ transaction.
-
-That composer and its live sequencer test are pending. Until they exist, local
-gate tests demonstrate state rules but do not constitute end-to-end on-chain
-receipt verification.
+Local tests execute the compiled threshold guest, gate guest, and LEZ privacy
+circuit together, including missing and malformed assumptions. A real
+non-development threshold receipt is also generated and host-verified. A
+standalone sequencer lifecycle and live testnet deployment are not yet recorded.

@@ -1,15 +1,15 @@
 {
-  "accounts": [],
-  "errors": [],
-  "instruction_type": "quorum_gate_core::QuorumInstruction",
+  "version": "0.1.0",
+  "name": "quorum_gate",
   "instructions": [
     {
+      "name": "initialize",
       "accounts": [
         {
-          "init": true,
           "name": "multisig",
+          "writable": true,
           "signer": true,
-          "writable": true
+          "init": true
         }
       ],
       "args": [
@@ -38,22 +38,22 @@
             }
           }
         }
-      ],
-      "name": "initialize"
+      ]
     },
     {
+      "name": "propose",
       "accounts": [
         {
-          "init": false,
           "name": "multisig",
+          "writable": true,
           "signer": false,
-          "writable": true
+          "init": false
         },
         {
-          "init": true,
           "name": "proposal",
+          "writable": true,
           "signer": true,
-          "writable": true
+          "init": true
         }
       ],
       "args": [
@@ -63,22 +63,29 @@
             "defined": "ActionData"
           }
         }
-      ],
-      "name": "propose"
+      ]
     },
     {
+      "name": "approve",
       "accounts": [
         {
-          "init": false,
           "name": "multisig",
+          "writable": true,
           "signer": false,
-          "writable": true
+          "init": false
         },
         {
-          "init": false,
           "name": "proposal",
+          "writable": true,
           "signer": false,
-          "writable": true
+          "init": false
+        },
+        {
+          "name": "credentials",
+          "writable": true,
+          "signer": true,
+          "init": false,
+          "rest": true
         }
       ],
       "args": [
@@ -92,34 +99,34 @@
             "defined": "ThresholdClaim"
           }
         }
-      ],
-      "name": "approve"
+      ]
     },
     {
+      "name": "execute",
       "accounts": [
         {
-          "init": false,
           "name": "multisig",
+          "writable": true,
           "signer": false,
-          "writable": true
+          "init": false
         },
         {
-          "init": false,
           "name": "proposal",
+          "writable": true,
           "signer": false,
-          "writable": true
+          "init": false
         },
         {
-          "init": false,
           "name": "vault",
+          "writable": true,
           "signer": false,
-          "writable": true
+          "init": false
         },
         {
-          "init": false,
           "name": "recipient",
+          "writable": true,
           "signer": false,
-          "writable": true
+          "init": false
         }
       ],
       "args": [
@@ -127,11 +134,361 @@
           "name": "proposal_id",
           "type": "u64"
         }
-      ],
-      "name": "execute"
+      ]
     }
   ],
-  "name": "quorum_gate",
-  "types": [],
-  "version": "0.1.0"
+  "accounts": [
+    {
+      "name": "ConstitutionState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "multisig_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "type": "u32"
+          },
+          {
+            "name": "threshold",
+            "type": "u8"
+          },
+          {
+            "name": "member_count",
+            "type": "u8"
+          },
+          {
+            "name": "member_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "tiers",
+            "type": {
+              "vec": {
+                "defined": "TierPolicy"
+              }
+            }
+          },
+          {
+            "name": "proposal_counter",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposalState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "multisig_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "constitution_version",
+            "type": "u32"
+          },
+          {
+            "name": "threshold",
+            "type": "u8"
+          },
+          {
+            "name": "action",
+            "type": {
+              "defined": "ActionData"
+            }
+          },
+          {
+            "name": "nullifiers",
+            "type": {
+              "vec": {
+                "array": [
+                  "u8",
+                  32
+                ]
+              }
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": "ProposalStatus"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "ActionData",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Transfer",
+          "fields": [
+            {
+              "name": "recipient",
+              "type": {
+                "array": [
+                  "u8",
+                  32
+                ]
+              }
+            },
+            {
+              "name": "amount",
+              "type": "u64"
+            },
+            {
+              "name": "tier_id",
+              "type": "u8"
+            },
+            {
+              "name": "tier_max_amount",
+              "type": "u64"
+            }
+          ]
+        },
+        {
+          "name": "RotateMembers",
+          "fields": [
+            {
+              "name": "new_member_root",
+              "type": {
+                "array": [
+                  "u8",
+                  32
+                ]
+              }
+            },
+            {
+              "name": "new_member_count",
+              "type": "u8"
+            }
+          ]
+        },
+        {
+          "name": "ChangeThreshold",
+          "fields": [
+            {
+              "name": "new_threshold",
+              "type": "u8"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OnChainThresholdJournal",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "member_root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "proposal_id",
+          "type": "u64"
+        },
+        {
+          "name": "constitution_version",
+          "type": "u32"
+        },
+        {
+          "name": "required_threshold",
+          "type": "u8"
+        },
+        {
+          "name": "approval_count",
+          "type": "u8"
+        },
+        {
+          "name": "nullifiers",
+          "type": {
+            "vec": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        },
+        {
+          "name": "credential_commitments",
+          "type": {
+            "vec": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "defined": "ActionData"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ProposalStatus",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Active"
+        },
+        {
+          "name": "Executed"
+        }
+      ]
+    },
+    {
+      "name": "ThresholdClaim",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "journal",
+          "type": {
+            "defined": "OnChainThresholdJournal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "TierPolicy",
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "id",
+          "type": "u8"
+        },
+        {
+          "name": "threshold",
+          "type": "u8"
+        },
+        {
+          "name": "max_amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 4001,
+      "name": "InvalidConstitution",
+      "msg": "constitution is malformed"
+    },
+    {
+      "code": 4002,
+      "name": "TierNotFound",
+      "msg": "spending tier not found"
+    },
+    {
+      "code": 4003,
+      "name": "DuplicateNullifier",
+      "msg": "duplicate nullifier"
+    },
+    {
+      "code": 4004,
+      "name": "ProposalNotActive",
+      "msg": "proposal is not active"
+    },
+    {
+      "code": 4005,
+      "name": "JournalMismatch",
+      "msg": "journal does not match proposal"
+    },
+    {
+      "code": 4006,
+      "name": "ThresholdMismatch",
+      "msg": "proof threshold mismatch"
+    },
+    {
+      "code": 4007,
+      "name": "NoopRotation",
+      "msg": "rotation keeps the same root"
+    },
+    {
+      "code": 4008,
+      "name": "RotationWouldBreakThreshold",
+      "msg": "rotation breaks threshold"
+    },
+    {
+      "code": 4009,
+      "name": "InvalidThresholdChange",
+      "msg": "invalid threshold change"
+    },
+    {
+      "code": 4010,
+      "name": "StaleConstitution",
+      "msg": "proof uses a stale constitution"
+    },
+    {
+      "code": 4011,
+      "name": "TierCapMismatch",
+      "msg": "journal tier cap mismatch"
+    },
+    {
+      "code": 4012,
+      "name": "InvalidVault",
+      "msg": "vault is not the treasury PDA"
+    },
+    {
+      "code": 4013,
+      "name": "ProposalBindingMismatch",
+      "msg": "proposal belongs to another multisig"
+    },
+    {
+      "code": 4014,
+      "name": "StaleProposal",
+      "msg": "proposal uses a stale constitution"
+    },
+    {
+      "code": 4015,
+      "name": "InvalidRecipient",
+      "msg": "recipient differs from approved action"
+    },
+    {
+      "code": 4016,
+      "name": "ProposalIdMismatch",
+      "msg": "instruction and account proposal ids differ"
+    },
+    {
+      "code": 4017,
+      "name": "CredentialMismatch",
+      "msg": "credential accounts do not match proof"
+    }
+  ],
+  "instruction_type": "quorum_gate_core::QuorumInstruction"
 }

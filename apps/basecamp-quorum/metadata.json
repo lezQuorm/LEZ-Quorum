@@ -10,6 +10,9 @@
   "main": "quorum_ui_plugin",
   "view": "qml/QuorumView.qml",
   "dependencies": ["lez_core"],
+  "codegen": {
+    "rep": "src/quorum_ui.rep"
+  },
   "nix": {
     "packages": {
       "build": [],

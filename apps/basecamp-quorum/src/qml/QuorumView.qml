@@ -8,9 +8,6 @@ Rectangle {
     id: root
     color: Theme.palette.background
 
-    // Backend contract: the module backend launches the `quorum` CLI.
-    // Signals: operationFinished(success, exitCode, output, error)
-    // Methods: start(label, arguments), cancel(), setBinary(path)
     readonly property var backend: logos.module("quorum_ui")
     property bool ready: false
 
@@ -66,6 +63,13 @@ Rectangle {
                 Layout.preferredHeight: 28
             }
 
+            LogosText {
+                visible: root.backend && root.backend.busy
+                text: root.backend ? root.backend.activeOperation : ""
+                color: Theme.palette.textSecondary
+                font.pixelSize: Theme.typography.secondaryText
+            }
+
             Button {
                 text: "Cancel"
                 visible: root.backend && root.backend.busy
@@ -87,7 +91,25 @@ Rectangle {
             Button {
                 text: "Use binary"
                 enabled: root.ready && !(root.backend && root.backend.busy)
-                onClicked: root.backend.setBinary(binaryField.text)
+                onClicked: root.backend.configureQuorumBinary(binaryField.text)
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing.small
+
+            TextField {
+                id: workingDirectoryField
+                Layout.fillWidth: true
+                text: root.backend ? root.backend.workingDirectory : ""
+                placeholderText: "Private Quorum working directory"
+                selectByMouse: true
+            }
+            Button {
+                text: "Use directory"
+                enabled: root.ready && !(root.backend && root.backend.busy)
+                onClicked: root.backend.configureWorkingDirectory(workingDirectoryField.text)
             }
         }
 
@@ -324,9 +346,17 @@ Rectangle {
                     selectByMouse: true
                     wrapMode: TextEdit.WrapAnywhere
                     color: Theme.palette.text
-                    text: root.backend && root.backend.lastOutput
-                        ? root.backend.lastOutput
-                        : "Ready"
+                    text: {
+                        if (!root.backend)
+                            return "Unavailable"
+                        var output = root.backend.lastOutput || ""
+                        var error = root.backend.lastError || ""
+                        if (output.length > 0 && error.length > 0)
+                            return output + "\n" + error
+                        if (error.length > 0)
+                            return error
+                        return output.length > 0 ? output : "Ready"
+                    }
                     background: null
                 }
             }

@@ -309,6 +309,7 @@ fn approve(member_index: usize, proposal_id: u64) -> Result<(), String> {
     let member = Member {
         index: member_index,
         secret,
+        account_identifier: 0,
     };
     let proof = state
         .multisig
@@ -343,7 +344,11 @@ fn approve_all(proposal_id: u64, members_csv: &str) -> Result<(), String> {
         .iter()
         .map(|&index| {
             let secret = load_secret(index)?;
-            Ok(Member { index, secret })
+            Ok(Member {
+                index,
+                secret,
+                account_identifier: 0,
+            })
         })
         .collect::<Result<Vec<_>, String>>()?;
     let member_refs: Vec<&Member> = members.iter().collect();

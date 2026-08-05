@@ -1,63 +1,57 @@
 # Security Assumptions
 
-Quorum is a research prototype and has not been independently audited. A
-production deployment must validate each assumption below against the exact
-LEZ, SPEL, NSSA, and Risc0 versions in use.
+Quorum is a research implementation and has not been independently audited. A
+deployment must review these assumptions against the exact pinned LEZ, SPEL,
+NSSA, and Risc0 revisions.
 
-## Cryptographic assumptions
+## Cryptography and composition
 
 | Assumption | Consequence if false |
 |---|---|
-| SHA-256 is collision and preimage resistant | Member commitments, Merkle roots, nullifiers, and PDA derivation may be forgeable |
-| Risc0 receipts are sound | An attacker may claim approvals without valid witnesses |
+| SHA-256 is collision and preimage resistant | Credential commitments, Merkle roots, nullifiers, and PDA derivation may be forgeable |
+| Risc0 receipts and assumptions are sound | An attacker may claim approvals or program execution without valid witnesses |
 | The pinned threshold image ID is correct | The gate may verify a different statement |
-| Secure randomness and secret storage | Member credentials may be guessed or stolen |
+| LEZ private account derivation and privacy circuit are correct | Credential control or transaction privacy may fail |
+| Randomness and protected storage remain secure | Member and signer credentials may be stolen |
 
-RISC0_DEV_MODE=1 is for local testing only. Real proof generation rejects dev
-mode, but operators must also ensure no dev receipt enters a deployment
-pipeline.
+`RISC0_DEV_MODE=1` is only for tests. The Basecamp backend forces dev mode off,
+and the real-proof path rejects development mode.
 
-## State assumptions
+## State and account assumptions
 
-- The initialized constitution account ID is authentic and controlled by the
-  gate program.
-- Proposal accounts are created by the gate and remain bound to the owning
-  multisig ID and constitution version.
-- Tier policy stored in the constitution is authoritative.
+- Constitution and proposal accounts are owned by the deployed gate program.
+- Every proposal remains bound to its multisig ID and creation-time version.
+- Tier policy in the constitution is authoritative.
 - The treasury vault is the PDA derived from the multisig ID and is initialized
   under the intended token program.
-- Runtime account IDs and serialization formats match the pinned LEZ
-  dependencies.
+- Credential account identities supplied to the privacy circuit are current,
+  and wallets construct valid membership proofs for credential updates.
+- Runtime serialization matches the pinned dependencies and committed IDL.
 
-The gate validates these bindings where the current API exposes them,
-including proposal ID, multisig ownership, stale versions, recipient account,
-tier cap, and vault PDA.
+The gate checks proposal, policy, recipient, vault, nullifier, and credential
+bindings. The composer verifies the threshold artifact before proving the gate
+and refuses proposal or credential substitution.
 
 ## Operational assumptions
 
-- Fewer than the required threshold of member secrets are compromised.
-- Replacement keys are distributed privately before operators depend on them.
-- Backups, recovery, and retirement of old secrets are handled securely.
-- The proving host and transaction composer do not leak witnesses.
-- Network-level timing and metadata correlation are acceptable for the
-  deployment threat model.
+- Fewer than the configured threshold of member secrets are compromised.
+- Replacement credentials are distributed privately and old credentials are
+  retired after rotation.
+- Backups, recovery, and key deletion follow an operator-approved policy.
+- Proving and wallet hosts do not leak witnesses.
+- Confirmation timeouts are reconciled by transaction hash before retrying.
+- Network timing and metadata exposure are acceptable for the deployment's
+  threat model.
 
-## Pending security boundaries
+## Remaining assurance work
 
-Two required bindings are not implemented:
-
-1. Quorum member secrets are not yet linked to live shielded LEZ account
-   credentials.
-2. The threshold receipt is not yet attached as an assumption by a LEZ
-   transaction composer.
-
-Local state-machine tests do not close either boundary. Both require integration
-tests against the current executor and a live or standalone sequencer before
-the system can be evaluated as an on-chain multisig.
-
-## Out of scope
+The local proof/composition boundary is tested, including missing,
+wrong-image, malformed, and substituted inputs. It has not yet been exercised
+through a standalone sequencer lifecycle or testnet deployment. Treasury
+funding, wallet scanning, retries, state reconciliation, Basecamp packaging,
+and dependency behavior still require runtime evidence. An independent circuit
+and program audit is required before production use.
 
 Quorum does not hide proposal contents, approval count, policy changes, or
-rotation timing. It does not prevent members from withholding approval,
-approving a malicious proposal, losing credentials, or colluding at or above
-the configured threshold.
+rotation timing. It cannot prevent approval withholding, loss of credentials,
+or collusion at or above the configured threshold.

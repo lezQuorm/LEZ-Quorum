@@ -38,19 +38,19 @@ prior proposals stale.
 
 ## ADR-0005: Verify threshold receipts through Risc0 composition
 
-**Status:** Accepted design; transaction integration pending.
+**Status:** Implemented and locally verified.
 
 The SPEL guest verifies the pinned threshold image and journal with env::verify.
 Nested verification requires the host transaction executor to attach the
-threshold receipt as an assumption. The transaction composer that performs
-this step is required before deployment.
+threshold receipt as an assumption. `quorum-composer` performs this step and
+then attaches the gate receipt to the LEZ privacy circuit. Standalone sequencer
+and testnet evidence remain pending.
 
 ## ADR-0006: Isolate LEZ account compatibility
 
-**Status:** Compatibility model implemented; credential binding pending.
+**Status:** Implemented and locally verified.
 
-lez-compat models LEZ v0.3 account commitments, nonce progression, owner
-stability, and Merkle proofs in a separate crate. The current Quorum circuit
-uses an independent member secret scheme. Live shielded-account control must be
-bound explicitly before the compatibility layer becomes part of the security
-claim.
+`lez-compat` models LEZ v0.3 private account IDs, commitments, nonce
+progression, owner stability, and Merkle proofs. Member commitments now bind an
+LEZ regular private account ID, and the outer privacy proof establishes control
+of that same credential.

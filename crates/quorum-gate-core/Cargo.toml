@@ -8,6 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+quorum-core = { path = "../quorum-core" }
 quorum-circuit = { path = "../quorum-circuit" }
 quorum-image-id = { path = "../quorum-image-id" }
 borsh = { version = "1.5", features = ["derive"] }
@@ -16,7 +17,7 @@ thiserror = "2"
 sha2 = "0.10"
 
 [dev-dependencies]
-quorum-core = { path = "../quorum-core" }
+lez-compat = { path = "../lez-compat" }
 serde_json = "1"
 
 [lints]

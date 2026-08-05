@@ -8,6 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+lez-compat = { path = "../lez-compat" }
 quorum-core = { path = "../quorum-core" }
 quorum-circuit = { path = "../quorum-circuit" }
 quorum-gate-core = { path = "../quorum-gate-core" }

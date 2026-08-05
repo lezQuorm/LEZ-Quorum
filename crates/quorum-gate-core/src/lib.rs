@@ -17,6 +17,7 @@
 //!   gate demanded (the LP-0005 winning evidence trick).
 
 pub use quorum_circuit::{ActionData, ThresholdJournal};
+use quorum_core::nullifier::credential_commitment_from_account_id;
 use serde::{Deserialize, Serialize};
 
 use borsh::BorshDeserialize;
@@ -332,6 +333,8 @@ pub struct OnChainThresholdJournal {
     pub approval_count: u8,
     /// Nullifiers committed by this proof.
     pub nullifiers: Vec<[u8; 32]>,
+    /// Proposal-scoped commitments to the private LEZ credential accounts.
+    pub credential_commitments: Vec<[u8; 32]>,
     /// The gated action.
     pub action: ActionData,
 }
@@ -345,6 +348,7 @@ impl From<&ThresholdJournal> for OnChainThresholdJournal {
             required_threshold: journal.required_threshold,
             approval_count: journal.approval_count,
             nullifiers: journal.nullifiers.clone(),
+            credential_commitments: journal.credential_commitments.clone(),
             action: journal.action.clone(),
         }
     }
@@ -376,7 +380,7 @@ pub struct ClaimCheck {
     pub nullifiers: Vec<[u8; 32]>,
 }
 
-/// Deterministic gate errors (codes `4001`–`4016`).
+/// Deterministic gate errors (codes `4001`–`4017`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum GateError {
@@ -419,6 +423,8 @@ pub enum GateError {
     InvalidRecipient = 4015,
     /// Instruction proposal id does not match the supplied proposal account.
     ProposalIdMismatch = 4016,
+    /// Private credential accounts do not match the threshold proof.
+    CredentialMismatch = 4017,
 }
 
 impl GateError {
@@ -448,6 +454,9 @@ impl GateError {
             Self::StaleProposal => "proposal bound to a stale constitution",
             Self::InvalidRecipient => "recipient account does not match the approved action",
             Self::ProposalIdMismatch => "instruction proposal id does not match proposal state",
+            Self::CredentialMismatch => {
+                "private credential accounts do not match the threshold proof"
+            }
         }
     }
 }
@@ -515,6 +524,7 @@ pub fn check_claim(
     if journal.required_threshold == 0
         || approval_count == 0
         || approval_count != journal.nullifiers.len()
+        || approval_count != journal.credential_commitments.len()
         || approval_count < usize::from(journal.required_threshold)
     {
         return Err(GateError::ThresholdMismatch);
@@ -529,6 +539,45 @@ pub fn check_claim(
     Ok(ClaimCheck {
         nullifiers: journal.nullifiers.clone(),
     })
+}
+
+/// Binds the threshold receipt to the authorized private LEZ accounts supplied
+/// to the outer approval transaction.
+///
+/// Account order is deliberately irrelevant: the circuit and transaction
+/// composer may canonicalize their private inputs independently.
+///
+/// # Errors
+/// `GateError::CredentialMismatch` if the account count, commitments, or
+/// uniqueness differ from the receipt journal.
+pub fn validate_credentials(
+    journal: &OnChainThresholdJournal,
+    credential_account_ids: &[[u8; 32]],
+) -> Result<(), GateError> {
+    if credential_account_ids.len() != journal.credential_commitments.len() {
+        return Err(GateError::CredentialMismatch);
+    }
+    let mut actual: Vec<[u8; 32]> = credential_account_ids
+        .iter()
+        .map(|account_id| {
+            credential_commitment_from_account_id(
+                account_id,
+                &journal.member_root,
+                journal.proposal_id,
+                journal.constitution_version,
+            )
+        })
+        .collect();
+    actual.sort_unstable();
+    if actual.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(GateError::CredentialMismatch);
+    }
+    let mut expected = journal.credential_commitments.clone();
+    expected.sort_unstable();
+    if actual != expected {
+        return Err(GateError::CredentialMismatch);
+    }
+    Ok(())
 }
 
 /// Applies the aggregated nullifiers to a proposal (called after receipt
@@ -810,6 +859,7 @@ mod tests {
             let p = tree.proof_for(&member_commitment(&secret)).expect("proof");
             quorum_circuit::MemberApprovalWitness {
                 member_secret: secret,
+                account_identifier: 0,
                 leaf_index: p.leaf_index,
                 siblings: p.siblings,
             }
@@ -849,6 +899,7 @@ mod tests {
             required_threshold: 1,
             approvals: vec![quorum_circuit::MemberApprovalWitness {
                 member_secret: secrets[1],
+                account_identifier: 0,
                 leaf_index: p.leaf_index,
                 siblings: p.siblings,
             }],
@@ -1061,6 +1112,9 @@ mod tests {
 
         malformed.approval_count = 2;
         malformed.nullifiers.push(malformed.nullifiers[0]);
+        malformed
+            .credential_commitments
+            .push(malformed.credential_commitments[0]);
         assert_eq!(
             check_claim(&c, &proposal, &malformed),
             Err(GateError::DuplicateNullifier)
@@ -1075,6 +1129,41 @@ mod tests {
             Err(GateError::DuplicateNullifier)
         );
         assert_eq!(proposal, before);
+    }
+
+    #[test]
+    fn credentials_are_order_independent_but_cannot_be_substituted_or_reused() {
+        let credential_ids = [
+            lez_compat::private_account_id(&[1_u8; 32], 0),
+            lez_compat::private_account_id(&[2_u8; 32], 0),
+        ];
+        let (_, journal) = witness();
+        let mut onchain = OnChainThresholdJournal::from(&journal);
+        onchain.approval_count = 2;
+        onchain.required_threshold = 2;
+        onchain.nullifiers = vec![[10_u8; 32], [11_u8; 32]];
+        onchain.credential_commitments = credential_ids
+            .iter()
+            .map(|account_id| {
+                quorum_core::nullifier::credential_commitment_from_account_id(
+                    account_id,
+                    &onchain.member_root,
+                    onchain.proposal_id,
+                    onchain.constitution_version,
+                )
+            })
+            .collect();
+
+        assert!(validate_credentials(&onchain, &credential_ids).is_ok());
+        assert!(validate_credentials(&onchain, &[credential_ids[1], credential_ids[0]]).is_ok());
+        assert_eq!(
+            validate_credentials(&onchain, &[credential_ids[0], [99_u8; 32]]),
+            Err(GateError::CredentialMismatch)
+        );
+        assert_eq!(
+            validate_credentials(&onchain, &[credential_ids[0], credential_ids[0]]),
+            Err(GateError::CredentialMismatch)
+        );
     }
 
     #[test]

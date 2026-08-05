@@ -1,102 +1,110 @@
 # Deployment and Integration
 
-This is an integration runbook, not a turnkey production deployment guide.
-Quorum does not yet include the transaction composer or network client required
-to submit threshold receipts to LEZ.
+This runbook separates locally verified implementation from operations that
+require a running LEZ sequencer, wallet credentials, and funded accounts.
 
 ## Local verification
 
-~~~bash
-cargo build --release -p quorum-cli
-cargo build --release -p quorum-gate-methods
-
-cargo fmt --check
-RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets -- -D warnings
-RISC0_DEV_MODE=1 cargo test --workspace
+```bash
+cargo fmt --all -- --check
+RISC0_DEV_MODE=1 cargo check --workspace --all-targets --all-features
+RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets --all-features -- -D warnings
+RISC0_DEV_MODE=1 cargo test --workspace --all-features
 RISC0_DEV_MODE=1 ./scripts/demo.sh
-~~~
+```
 
-For a real local threshold receipt:
+Generate a real threshold receipt:
 
-~~~bash
+```bash
 RISC0_DEV_MODE=0 \
   cargo run -p quorum-prover --example prove_threshold --release
-~~~
+```
 
-## Required transaction composer
+Regenerate and validate the gate IDL:
 
-Before deployment, implement a client that performs all of the following:
+```bash
+cargo run -p quorum-gate-methods --example generate_idl
+RISC0_DEV_MODE=1 cargo test -p quorum-gate-methods
+```
 
-1. Reads the multisig and proposal accounts from LEZ.
-2. Builds a threshold witness from the active constitution.
-3. Produces and verifies the threshold receipt locally.
-4. Converts the proof journal to the approve instruction type.
-5. Adds the threshold receipt as an assumption to the outer SPEL execution.
-6. Builds, signs, submits, and confirms the LEZ transaction.
-7. Re-reads proposal state and checks the accepted nullifiers.
+## Composer API
 
-The serialized receipt currently present in CLI proof artifacts is not consumed
-by env::verify inside the gate guest. Nested receipt verification succeeds only
-when the outer executor receives the receipt as an assumption.
+`quorum-composer` accepts a verified `QuorumProof` and wallet-prepared
+`PrivateApprovalRequest`. The request contains the deployed gate program,
+current multisig/proposal states, private credential identities, public account
+IDs and nonces, and any public signer keys.
+
+The composer verifies the proof artifact and credential binding, proves the
+gate with the threshold receipt assumption, proves the outer LEZ privacy
+circuit, and returns a `PrivacyPreservingTransaction`. With the `network`
+feature, `NetworkClient` submits once and confirms by hash:
+
+```bash
+cargo check -p quorum-composer --features network
+```
+
+On confirmation, re-read the public multisig and proposal accounts. Reconcile
+private credential changes through the wallet's encrypted-output scan and new
+commitments. If confirmation times out, query the existing hash before
+rebuilding or resubmitting a transaction.
 
 ## Program deployment
 
-After the composer exists:
+The remaining network procedure is:
 
-1. Build the quorum-gate method and record its image ID.
-2. Deploy the method using the supported LEZ program deployment flow.
-3. Initialize a multisig constitution with a nonzero account ID, threshold,
-   member count, member root, and validated tiers.
-4. Create the treasury token holding at the gate-derived vault PDA.
-5. Fund the vault with a test-only amount.
-6. Submit propose, approve, and execute transactions through the composer.
+1. Start a supported LEZ v0.2 sequencer or select a compatible testnet RPC.
+2. Use a funded deployment wallet to deploy `quorum-gate` and record its
+   program ID and dependency revisions.
+3. Initialize the constitution account and create a proposal account through
+   the deployed program.
+4. Derive, create, and fund the treasury token holding.
+5. Enroll private credential commitments and ensure the wallet can construct
+   private account init/update identities.
+6. Compose and submit propose, approve, execute, rotate, and threshold-change
+   transactions.
+7. Re-read public state and scan private outputs after every confirmation.
 
-The vault seed is:
+The treasury vault seed is:
 
-~~~text
+```text
 SHA256("quorum/vault/v1" || multisig_account_id)
-~~~
+```
 
-Transfer execution validates both that PDA and the approved recipient before
-emitting the token chained call.
+Execution validates that PDA and the approved recipient before emitting the
+token transfer chained call.
 
 ## Rotation operations
 
-The local CLI creates a private replacement bundle and prints its public root:
+The offline workflow creates a protected replacement bundle and prints its
+public root:
 
-~~~bash
+```bash
 NEW_ROOT="$(quorum new-root --members 3)"
 quorum propose \
   --action rotate \
   --new-member-root "$NEW_ROOT" \
   --new-member-count 3
-~~~
+```
 
-Approve and execute the rotation under the old constitution. Only after the
-new root is active should operators run:
+Approve and execute under the old constitution. Activate the replacement
+bundle only after confirmed chain state contains the new root:
 
-~~~bash
+```bash
 quorum activate-rotation
-~~~
+```
 
-Activation re-derives the bundle commitments and root, checks the root and
-member count against the active constitution, then installs the replacement
-local key files. The bundle contains secrets and must be distributed and
-stored through an operator-approved secure channel.
+The bundle contains credentials and must be distributed through an approved
+secure channel.
 
-## Minimum integration tests
+## Required network evidence
 
-A deployment is not complete until automated tests cover:
+Before calling a deployment complete, capture:
 
-- missing, wrong-image, malformed, and tampered receipt assumptions;
-- cross-multisig proposal substitution;
-- stale proposal and stale constitution claims;
-- duplicate nullifiers;
-- recipient and vault substitution;
-- transfer above the tier cap;
-- old-member rejection after rotation;
-- replacement-member approval after rotation; and
-- interrupted transaction and retry behavior.
-
-Record the deployed program ID, dependency revisions, account IDs, transaction
-hashes, and observed costs under docs/evidence.
+- deployed program ID and exact dependency revisions;
+- multisig, proposal, vault, and recipient account IDs;
+- transaction hashes for every lifecycle operation;
+- missing/wrong receipt, recipient, vault, stale credential, and duplicate
+  approval failures on the runtime;
+- old-member rejection and replacement-member approval after rotation;
+- timeout/retry reconciliation behavior; and
+- confirmation latency, compute use, and fees where exposed.

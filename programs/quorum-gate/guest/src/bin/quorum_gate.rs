@@ -3,8 +3,8 @@
 use quorum_gate_core::{
     apply_action, apply_approved_claim, check_claim, decode_constitution, decode_proposal,
     encode_constitution, encode_proposal, validate_proposal_id, validate_transfer_recipient,
-    ActionData, ConstitutionState, GateError, ProposalState, ProposalStatus, ThresholdClaim,
-    THRESHOLD_IMAGE_ID,
+    validate_credentials, ActionData, ConstitutionState, GateError, ProposalState, ProposalStatus,
+    ThresholdClaim, THRESHOLD_IMAGE_ID,
 };
 use nssa_core::{
     account::{AccountId, AccountWithMetadata},
@@ -128,6 +128,7 @@ mod quorum_gate {
         _ctx: ProgramContext,
         #[account(mut, owner = self_program_id)] multisig: AccountWithMetadata,
         #[account(mut, owner = self_program_id)] mut proposal: AccountWithMetadata,
+        #[account(mut, signer)] credentials: Vec<AccountWithMetadata>,
         proposal_id: u64,
         claim: ThresholdClaim,
     ) -> SpelResult {
@@ -139,6 +140,12 @@ mod quorum_gate {
             .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
 
         let check = check_claim(&constitution, &state, &claim.journal)
+            .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
+        let credential_account_ids: Vec<[u8; 32]> = credentials
+            .iter()
+            .map(|credential| *credential.account_id.value())
+            .collect();
+        validate_credentials(&claim.journal, &credential_account_ids)
             .unwrap_or_else(|error| fail(error.code() as u16, &error.to_string()));
 
         // The outer executor must attach the matching threshold receipt as an
@@ -156,7 +163,15 @@ mod quorum_gate {
             .unwrap_or_else(|_| fail(2005, "proposal state is too large"));
 
         let mut output = SpelOutput::empty();
-        output.post_states = vec![AccountPostState::new(proposal.account)];
+        output.post_states = vec![
+            AccountPostState::new(multisig.account),
+            AccountPostState::new(proposal.account),
+        ];
+        output.post_states.extend(
+            credentials
+                .into_iter()
+                .map(|credential| AccountPostState::new(credential.account)),
+        );
         Ok(output)
     }
 

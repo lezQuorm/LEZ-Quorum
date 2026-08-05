@@ -14,7 +14,9 @@
 //! exact `ProofGate` pattern: verify in the guest, gate on-chain.
 
 use quorum_core::merkle::{leaf_hash, node_hash};
-use quorum_core::nullifier::{derive_nullifier, member_commitment};
+use quorum_core::nullifier::{
+    credential_commitment_for_credential, derive_nullifier, member_commitment_for_credential,
+};
 use serde::{Deserialize, Serialize};
 
 /// 32-byte digest.
@@ -63,8 +65,10 @@ pub enum ActionData {
 /// A single member's approval — the member's secret is private.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberApprovalWitness {
-    /// The member's identity secret (private; derives the commitment + nullifier).
+    /// LEZ nullifier secret key (private; derives the account id and nullifier).
     pub member_secret: [u8; 32],
+    /// LEZ regular-private-account identifier used with the nullifier key.
+    pub account_identifier: u128,
     /// Leaf position in the member Merkle tree.
     pub leaf_index: usize,
     /// Sibling hashes from leaf to root.
@@ -103,6 +107,8 @@ pub struct ThresholdJournal {
     pub approval_count: u8,
     /// Nullifiers of the approving members (on-chain double-vote prevention).
     pub nullifiers: Vec<Digest32>,
+    /// Proposal-scoped commitments to the LEZ credential accounts used by this proof.
+    pub credential_commitments: Vec<Digest32>,
     /// The gated action.
     pub action: ActionData,
 }
@@ -187,8 +193,10 @@ pub fn evaluate(witness: &ThresholdWitness) -> Result<ThresholdJournal, CircuitE
     }
 
     let mut nullifiers = Vec::with_capacity(witness.approvals.len());
+    let mut credential_commitments = Vec::with_capacity(witness.approvals.len());
     for approval in &witness.approvals {
-        let commitment = member_commitment(&approval.member_secret);
+        let commitment =
+            member_commitment_for_credential(&approval.member_secret, approval.account_identifier);
         let mut result = leaf_hash(&commitment);
         let mut level_index = approval.leaf_index;
         for sibling in &approval.siblings {
@@ -204,6 +212,13 @@ pub fn evaluate(witness: &ThresholdWitness) -> Result<ThresholdJournal, CircuitE
         }
         nullifiers.push(derive_nullifier(
             &approval.member_secret,
+            witness.proposal_id,
+            witness.constitution_version,
+        ));
+        credential_commitments.push(credential_commitment_for_credential(
+            &approval.member_secret,
+            approval.account_identifier,
+            &witness.member_root,
             witness.proposal_id,
             witness.constitution_version,
         ));
@@ -242,6 +257,7 @@ pub fn evaluate(witness: &ThresholdWitness) -> Result<ThresholdJournal, CircuitE
         approval_count: u8::try_from(witness.approvals.len())
             .expect("approval count fits in u8: capped by MAX_APPROVALS"),
         nullifiers,
+        credential_commitments,
         action: witness.action.clone(),
     })
 }
@@ -250,7 +266,7 @@ pub fn evaluate(witness: &ThresholdWitness) -> Result<ThresholdJournal, CircuitE
 mod tests {
     use super::*;
     use quorum_core::merkle::MemberTree;
-    use quorum_core::nullifier::member_commitment;
+    use quorum_core::nullifier::member_commitment_for_credential;
 
     #[allow(clippy::cast_possible_truncation)] // test helper: n < 256 always
     fn secrets(n: usize) -> Vec<[u8; 32]> {
@@ -259,13 +275,17 @@ mod tests {
 
     fn two_of_three_witness(amount: u64) -> ThresholdWitness {
         let secrets = secrets(3);
-        let commitments: Vec<Digest32> = secrets.iter().map(member_commitment).collect();
+        let commitments: Vec<Digest32> = secrets
+            .iter()
+            .map(|secret| member_commitment_for_credential(secret, 0))
+            .collect();
         let tree = MemberTree::new(&commitments);
         let approval_for = |secret: [u8; 32]| {
-            let commitment = member_commitment(&secret);
+            let commitment = member_commitment_for_credential(&secret, 0);
             let p = tree.proof_for(&commitment).expect("member proof");
             MemberApprovalWitness {
                 member_secret: secret,
+                account_identifier: 0,
                 leaf_index: p.leaf_index,
                 siblings: p.siblings,
             }
@@ -292,6 +312,7 @@ mod tests {
         assert_eq!(journal.approval_count, 2);
         assert_eq!(journal.required_threshold, 2);
         assert_eq!(journal.nullifiers.len(), 2);
+        assert_eq!(journal.credential_commitments.len(), 2);
         assert_ne!(journal.nullifiers[0], journal.nullifiers[1]);
     }
 

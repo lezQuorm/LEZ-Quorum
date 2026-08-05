@@ -11,6 +11,8 @@ risc0-build.workspace = true
 
 [dev-dependencies]
 spel-framework = { git = "https://github.com/logos-co/spel.git", rev = "0cb7e0980535af619482cf1c823f4d394b3ebd61" }
+spel-framework-core = { git = "https://github.com/logos-co/spel.git", rev = "0cb7e0980535af619482cf1c823f4d394b3ebd61", features = ["idl-gen"] }
+spel-client-gen = { git = "https://github.com/logos-co/spel.git", rev = "0cb7e0980535af619482cf1c823f4d394b3ebd61" }
 quorum-gate-core = { path = "../../crates/quorum-gate-core" }
 token-core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.0", package = "token_core" }
 risc0-zkvm.workspace = true

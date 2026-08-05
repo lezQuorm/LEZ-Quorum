@@ -2,48 +2,44 @@
 
 ## Statement
 
-The quorum-threshold Risc0 guest proves that:
-
-- every supplied approval knows a secret whose commitment belongs to the
-  specified member root;
-- all approval nullifiers are correctly derived and distinct;
-- the number of approvals meets the required threshold;
-- the proof is bound to one proposal ID and constitution version; and
-- the action passes the circuit-level transfer, rotation, or threshold check.
+The `quorum-threshold` guest proves that every approval controls a credential
+committed under the active member root, that all proposal-bound nullifiers are
+distinct, that the approval count meets the required threshold, and that the
+public action satisfies the circuit-level policy check.
 
 ## Private witness
 
-~~~rust
+```rust
 ThresholdWitness {
     member_root,
     required_threshold,
-    approvals: Vec<MemberApprovalWitness>,
+    approvals: Vec<MemberApprovalWitness> {
+        member_secret,       // LEZ nullifier secret key
+        account_identifier,  // LEZ regular-private-account identifier
+        leaf_index,
+        siblings,
+    },
     action,
     proposal_id,
     constitution_version,
 }
-~~~
+```
 
-Each MemberApprovalWitness contains a private member secret, leaf index, and
-Merkle siblings.
+For each approval the guest follows the pinned LEZ v0.3 derivation:
 
-## Evaluation
+1. derive the nullifier public key from the secret;
+2. derive the regular private account ID from that key and identifier;
+3. blind the account ID into the Quorum member commitment;
+4. verify its SHA-256 Merkle path;
+5. derive a proposal- and version-bound Quorum nullifier; and
+6. reject duplicate credentials or nullifiers.
 
-1. Require a nonzero threshold and at most ten approvals.
-2. Derive each Quorum member commitment with SHA-256 domain separation.
-3. Recompute each SHA-256 Merkle path to the supplied member root.
-4. Derive a proposal- and version-bound nullifier for each secret.
-5. Reject duplicate nullifiers.
-6. Require the approval count to meet the threshold.
-7. Check that a transfer is below its supplied cap, a rotation changes the
-   root, or a threshold change is nonzero.
-
-The gate separately re-derives authoritative tier policy and validates all
-state and account bindings. Circuit checks do not replace gate checks.
+The gate independently re-derives tier policy and validates all account and
+state bindings. Circuit checks do not replace gate checks.
 
 ## Public journal
 
-~~~rust
+```rust
 ThresholdJournal {
     member_root,
     proposal_id,
@@ -51,29 +47,28 @@ ThresholdJournal {
     required_threshold,
     approval_count,
     nullifiers,
+    credential_commitments,
     action,
 }
-~~~
+```
 
-The journal contains no member secrets, commitment list, leaf indices, or
+`credential_commitments` bind the derived private account IDs to the member
+root, proposal ID, and constitution version. This prevents a leaked journal
+from exposing a stable cross-proposal credential pseudonym. The journal
+contains no secret keys, private account IDs, member list, leaf indices, or
 Merkle paths.
 
-## Proof modes
+## Receipt composition
 
-Individual mode proves one member at a time and lets the gate accumulate
-nullifiers. Aggregated mode proves several distinct approvals in one receipt.
-Both use the same guest and image ID.
+The host verifies the threshold receipt against the pinned image ID. The gate
+then calls `env::verify` for the same image and journal, which succeeds only
+when the composer supplies that receipt as an assumption. The resulting gate
+receipt becomes an assumption of the LEZ privacy circuit.
 
-## Hash domains
+Inside the privacy circuit, each private credential identity derives the same
+account ID from its nullifier secret. This connects the threshold statement to
+live LEZ account control without publishing the account ID in the final
+transaction message.
 
-Quorum membership and nullifiers use the domains defined in
-crates/quorum-core/src/nullifier.rs. The Merkle tree hashes commitment leaves
-and internal node pairs with SHA-256. This is separate from the LEZ account
-commitment format modeled by lez-compat.
-
-## Receipt verification
-
-quorum-prover verifies generated receipts against the pinned image ID on the
-host. The SPEL guest calls env::verify for nested verification. A LEZ
-transaction composer must add the threshold receipt as an executor assumption;
-that integration is still pending.
+Individual and aggregated approvals use the same guest and image ID. The
+current hard limit is ten approvals per receipt.

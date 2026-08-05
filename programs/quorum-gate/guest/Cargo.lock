@@ -1051,6 +1051,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lez-compat"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sha2",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1306,6 +1314,7 @@ dependencies = [
 name = "quorum-core"
 version = "0.1.0"
 dependencies = [
+ "lez-compat",
  "sha2",
 ]
 
@@ -1315,6 +1324,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "quorum-circuit",
+ "quorum-core",
  "quorum-image-id",
  "serde",
  "sha2",

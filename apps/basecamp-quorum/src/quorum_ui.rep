@@ -1,0 +1,18 @@
+class QuorumUi
+{
+    PROP(QString quorumBinary)
+    PROP(QString workingDirectory)
+    PROP(bool busy=false)
+    PROP(QString activeOperation)
+    PROP(QString lastOutput)
+    PROP(QString lastError)
+    PROP(QString failureKind)
+    PROP(int lastExitCode=0)
+
+    SLOT(bool configureQuorumBinary(QString path))
+    SLOT(bool configureWorkingDirectory(QString path))
+    SLOT(bool start(QString operation, QStringList arguments))
+    SLOT(bool cancel())
+
+    SIGNAL(operationFinished(bool success, int exitCode, QString output, QString error))
+}

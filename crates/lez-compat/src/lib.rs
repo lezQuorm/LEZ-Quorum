@@ -23,9 +23,18 @@ pub type Digest32 = [u8; 32];
 /// LEZ program owner identifier (8 × u32 LE words).
 pub type ProgramOwner = [u32; 8];
 
+/// LEZ nullifier secret key used to control a regular private account.
+pub type NullifierSecretKey = [u8; 32];
+
+/// LEZ nullifier public key derived from a nullifier secret key.
+pub type NullifierPublicKey = [u8; 32];
+
 /// Official LEZ v0.3 commitment domain prefix.
 pub const COMMITMENT_PREFIX: &[u8; 32] =
     b"/LEE/v0.3/Commitment/\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+
+/// Official LEZ v0.3 regular-private-account identifier domain.
+pub const PRIVATE_ACCOUNT_ID_PREFIX: &[u8; 32] = b"/LEE/v0.3/AccountId/Private/\x00\x00\x00\x00";
 
 /// Commitment of the default (all-zero) LEZ account — official test vector.
 pub const DUMMY_COMMITMENT: Commitment = Commitment([
@@ -156,6 +165,30 @@ pub fn hash_account_data(data: &[u8]) -> Digest32 {
 pub fn sha256(data: &[u8]) -> Digest32 {
     use sha2::{Digest, Sha256};
     Sha256::digest(data).into()
+}
+
+/// Derives the official LEZ v0.3 nullifier public key from its secret key.
+#[must_use]
+pub fn nullifier_public_key(secret: &NullifierSecretKey) -> NullifierPublicKey {
+    const PREFIX: &[u8; 8] = b"LEE/keys";
+    let mut bytes = [0_u8; 64];
+    bytes[..8].copy_from_slice(PREFIX);
+    bytes[8..40].copy_from_slice(secret);
+    bytes[40] = 7;
+    sha256(&bytes)
+}
+
+/// Derives an official LEZ v0.3 regular private account identifier.
+///
+/// Possession of `secret` is the credential-control statement proved by the
+/// LEZ privacy circuit for an authorized private account update.
+#[must_use]
+pub fn private_account_id(secret: &NullifierSecretKey, identifier: u128) -> Digest32 {
+    let mut bytes = [0_u8; 80];
+    bytes[..32].copy_from_slice(PRIVATE_ACCOUNT_ID_PREFIX);
+    bytes[32..64].copy_from_slice(&nullifier_public_key(secret));
+    bytes[64..].copy_from_slice(&identifier.to_le_bytes());
+    sha256(&bytes)
 }
 
 /// Shielded-account validation rules used by LEZ compatibility checks.
@@ -326,5 +359,34 @@ mod tests {
             assert!(!e.description().is_empty());
             assert!(e.to_string().contains(&e.code().to_string()));
         }
+    }
+
+    #[test]
+    fn private_account_derivation_matches_official_lez_vectors() {
+        let secret = [
+            57, 5, 64, 115, 153, 56, 184, 51, 207, 238, 99, 165, 147, 214, 213, 151, 30, 251, 30,
+            196, 134, 22, 224, 211, 237, 120, 136, 225, 188, 220, 249, 28,
+        ];
+        assert_eq!(
+            nullifier_public_key(&secret),
+            [
+                78, 20, 20, 5, 177, 198, 233, 100, 175, 134, 174, 200, 24, 205, 68, 215, 130, 74,
+                35, 54, 154, 184, 219, 42, 168, 106, 126, 147, 133, 244, 18, 218,
+            ]
+        );
+        assert_eq!(
+            private_account_id(&secret, 0),
+            [
+                165, 52, 40, 32, 231, 171, 113, 10, 65, 241, 156, 72, 154, 207, 122, 192, 15, 46,
+                50, 253, 105, 164, 89, 84, 40, 191, 182, 119, 64, 255, 67, 142,
+            ]
+        );
+        assert_eq!(
+            private_account_id(&secret, 1),
+            [
+                203, 201, 109, 245, 40, 54, 195, 12, 55, 33, 0, 86, 245, 65, 70, 156, 24, 249, 26,
+                95, 56, 247, 99, 121, 165, 182, 234, 255, 19, 127, 191, 72,
+            ]
+        );
     }
 }

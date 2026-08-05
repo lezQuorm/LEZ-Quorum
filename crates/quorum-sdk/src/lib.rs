@@ -12,7 +12,7 @@ use quorum_circuit::{
     evaluate, ActionData, MemberApprovalWitness, ThresholdJournal, ThresholdWitness,
 };
 use quorum_core::merkle::MemberTree;
-use quorum_core::nullifier::member_commitment;
+use quorum_core::nullifier::member_commitment_for_credential;
 use quorum_gate_core::{
     apply_action, apply_approved_claim, check_claim, ConstitutionState, OnChainThresholdJournal,
     ProposalState, ProposalStatus, TierPolicy,
@@ -61,13 +61,22 @@ pub struct Member {
     pub index: usize,
     /// Identity secret — NEVER commit this to a public file.
     pub secret: [u8; 32],
+    /// LEZ regular-private-account identifier controlled by `secret`.
+    #[serde(default)]
+    pub account_identifier: u128,
 }
 
 impl Member {
     /// The member's identity commitment (safe to publish).
     #[must_use]
     pub fn commitment(&self) -> [u8; 32] {
-        member_commitment(&self.secret)
+        member_commitment_for_credential(&self.secret, self.account_identifier)
+    }
+
+    /// LEZ v0.3 private account id controlled by this member.
+    #[must_use]
+    pub fn account_id(&self) -> [u8; 32] {
+        lez_compat::private_account_id(&self.secret, self.account_identifier)
     }
 }
 
@@ -90,6 +99,7 @@ impl MemberSet {
             .map(|(index, secret)| Member {
                 index,
                 secret: *secret,
+                account_identifier: 0,
             })
             .collect();
         let commitments: Vec<[u8; 32]> = members.iter().map(Member::commitment).collect();
@@ -145,6 +155,7 @@ impl MemberSet {
         .ok_or(SdkError::MemberNotInSet)?;
         Ok(MemberApprovalWitness {
             member_secret: member.secret,
+            account_identifier: member.account_identifier,
             leaf_index: proof.leaf_index,
             siblings: proof.siblings,
         })
@@ -159,16 +170,18 @@ impl MemberSet {
 pub fn approval_witness_for(
     commitments: &[[u8; 32]],
     member_secret: &[u8; 32],
+    account_identifier: u128,
     _proposal_id: u64,
     _constitution_version: u32,
 ) -> Result<MemberApprovalWitness, SdkError> {
     let tree = MemberTree::new(commitments);
-    let commitment = member_commitment(member_secret);
+    let commitment = member_commitment_for_credential(member_secret, account_identifier);
     let proof = tree
         .proof_for(&commitment)
         .ok_or(SdkError::MemberNotInSet)?;
     Ok(MemberApprovalWitness {
         member_secret: *member_secret,
+        account_identifier,
         leaf_index: proof.leaf_index,
         siblings: proof.siblings,
     })
@@ -306,6 +319,7 @@ impl Multisig {
                 approval_witness_for(
                     commitments,
                     &member.secret,
+                    member.account_identifier,
                     proposal_id,
                     self.constitution.version,
                 )
@@ -367,6 +381,7 @@ impl Multisig {
             approvals: vec![approval_witness_for(
                 commitments,
                 &member.secret,
+                member.account_identifier,
                 proposal_id,
                 self.constitution.version,
             )?],
@@ -545,7 +560,9 @@ mod tests {
         let new_commitments: Vec<[u8; 32]> = {
             let mut all = secrets(3);
             all[2] = newcomer;
-            all.iter().map(member_commitment).collect()
+            all.iter()
+                .map(|secret| member_commitment_for_credential(secret, 0))
+                .collect()
         };
         let new_root = MemberTree::new(&new_commitments).root();
         let action = ActionData::RotateMembers {

@@ -65,5 +65,6 @@ Account state encoding and decoding failures in the SPEL guest use code 2005.
 | 4014 | StaleProposal | Proposal was created under an older constitution |
 | 4015 | InvalidRecipient | Runtime recipient differs from the approved action |
 | 4016 | ProposalIdMismatch | Instruction ID differs from proposal state |
+| 4017 | CredentialMismatch | Private credential accounts differ from the proof journal |
 
 Threshold journal serialization failures in the SPEL guest use code 1011.

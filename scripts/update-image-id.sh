@@ -35,5 +35,6 @@ assert new != src, f"THRESHOLD_IMAGE_ID const not found in {path}"
 open(path, "w", encoding="utf-8").write(new)
 print(f"updated {path}")
 PY
+cargo fmt -q -p quorum-image-id
 
 echo "== done — verify with: cargo test -p quorum-image-id =="

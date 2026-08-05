@@ -1,70 +1,67 @@
 # Privacy Model
 
-Quorum aims to hide membership identities and approval attribution while
-keeping treasury policy and execution auditable. This document describes the
-current prototype, including what it does not yet prove.
+Quorum hides member identities and approval attribution while keeping treasury
+policy and execution auditable. This document describes the implemented local
+protocol; it does not claim network-level anonymity or a completed deployment.
 
-## Hidden by the threshold proof
+## Credential statement
 
-- Member secrets.
+A member secret is an LEZ nullifier secret key. Enrollment commits to the
+regular private account ID derived from that key and a `u128` account
+identifier. An approval proves both:
+
+1. that the credential commitment belongs to the constitution's member root;
+2. that the private LEZ transaction controls the matching account identity.
+
+The threshold circuit journals only a proposal-scoped commitment to the
+account ID. The binding also includes the member root and constitution version,
+so a leaked proof artifact does not provide a stable cross-proposal pseudonym.
+The gate sees the account ID inside its private execution, checks the binding,
+and the outer LEZ privacy circuit proves authorization and emits an encrypted
+post-state. The final transaction does not list credential account IDs among
+its public accounts.
+
+## Hidden by the proof path
+
+- LEZ nullifier secret keys.
+- Private credential account IDs.
 - Merkle leaf positions and authentication paths.
-- The plaintext member commitment list.
-- Which committed member produced each nullifier.
-
-The constitution stores only a Merkle root over Quorum member commitments. A
-proof shows that distinct secrets belong to that root and derives one public
-nullifier per approval.
+- The enrolled credential commitment list.
+- Which enrolled member produced a Quorum nullifier.
+- Private credential post-state contents.
 
 ## Public by design
 
-- Multisig account ID.
-- Constitution version, threshold, member count, member root, and spending
-  tiers.
+- Multisig and proposal account IDs.
+- Constitution version, threshold, member count, member root, and tiers.
 - Proposal ID, action, recipient, amount, tier, and status.
-- Required threshold, approval count, and accepted nullifiers.
+- Required threshold, approval count, and accepted Quorum nullifiers.
+- New encrypted-state commitments and LEZ nullifiers required by the privacy
+  protocol.
 - Rotation and threshold-change actions.
 
-A rotation is observable: the action, member root, member count, and
-constitution version change publicly. Observers cannot derive the member
-identities or map old members to new members from those values alone, but the
-implementation does not claim that a rotation is undetectable.
+A rotation is observable. It reveals the new root and count but not the member
+identities or a mapping from old credentials to replacement credentials.
 
-## Nullifier behavior
+## Linkability
 
-A nullifier is derived from the member secret, proposal ID, and constitution
-version. The same member produces a different value across proposals or
-constitution versions. Reusing the same approval for one proposal produces the
-same nullifier and is rejected.
+Quorum nullifiers bind the member secret to a proposal ID and constitution
+version, so they change across proposals and rotations. Reusing one credential
+for the same proposal produces the same value and is rejected.
 
-Nullifiers prevent duplicate approval; they do not hide proposal timing or the
-number of approvals submitted.
+Credential bindings in proof artifacts are scoped to the member root, proposal
+ID, and constitution version. They therefore change with a new proposal or
+rotation even when the same LEZ credential remains enrolled.
 
-## Transaction privacy
+Approval timing, proof count, proposal content, and threshold progress remain
+observable. Network observers may also correlate submission timing, endpoints,
+and traffic. The repository has no testnet evidence establishing sender
+unlinkability at the transport layer.
 
-Approval attribution also depends on the privacy properties of the LEZ
-transaction carrying the claim. The repository does not yet include the live
-transaction composer or testnet evidence, so sender unlinkability has not been
-demonstrated end to end.
+## Trust boundary
 
-## Credential boundary
-
-The current membership secret is a Quorum-specific random value. It is not yet
-bound to control of a live shielded LEZ account. lez-compat provides the
-account commitment model needed for that work, but it is currently isolated
-from the threshold circuit.
-
-## Summary
-
-~~~text
-private member secret
-        |
-        +--> member commitment --> Merkle root (public)
-        |
-        +--> proposal-bound nullifier (public)
-                                      |
-                                      +--> threshold state (public)
-~~~
-
-The privacy claim relies on SHA-256 preimage resistance, Risc0 proof soundness,
-correct transaction composition, secure member-secret handling, and the
-privacy guarantees of the eventual LEZ submission path.
+The privacy claim depends on SHA-256 preimage resistance, Risc0 proof
+soundness, the pinned LEZ account derivation, correct receipt composition,
+secure credential handling, and the privacy circuit in the pinned LEZ v0.2.0
+dependency. A compromised proving host can disclose witnesses before proof
+generation even if the resulting transaction is private.

@@ -1,5 +1,6 @@
 //! Generates a real (`RISC0_DEV_MODE=0`) 2-of-3 threshold proof and prints
-//! timing, receipt size, and the pinned image ID.
+//! timing, receipt size, and the pinned image ID. Set `QUORUM_PROOF_OUTPUT` to
+//! persist the JSON artifact for the composer's ignored real-receipt test.
 //!
 //! ```bash
 //! RISC0_DEV_MODE=0 cargo run -p quorum-prover --example prove_threshold --release
@@ -24,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .expect("member proof");
         MemberApprovalWitness {
             member_secret: secret,
+            account_identifier: 0,
             leaf_index: p.leaf_index,
             siblings: p.siblings,
         }
@@ -45,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("member_root:   {}", hex(&tree.root()));
     println!("image_id:      {:?}", threshold_image_id());
-    println!("proving 2-of-3 threshold (real mode)…");
+    println!("proving 2-of-3 threshold (real mode)...");
 
     let start = Instant::now();
     let proof = prove(&witness)?;
@@ -57,7 +59,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nullifiers: Vec<String> = proof.journal.nullifiers.iter().map(|n| hex(n)).collect();
     println!("nullifiers:    {nullifiers:?}");
     println!("action:        {:?}", proof.journal.action);
-    println!("verify ok:     ✓ (host re-verified receipt)");
+    println!("verify ok:     yes (host re-verified receipt)");
+
+    if let Ok(path) = std::env::var("QUORUM_PROOF_OUTPUT") {
+        let json = serde_json::to_vec_pretty(&proof)?;
+        std::fs::write(&path, json)?;
+        println!("proof artifact: {path}");
+    }
 
     // Print the image ID as a rust array so it can be pasted into
     // crates/quorum-image-id/src/lib.rs.

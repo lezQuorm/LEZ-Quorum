@@ -1,39 +1,53 @@
-# Quorum Basecamp Prototype
+# Quorum Basecamp Module
 
-This directory contains a QML prototype for operating Quorum from Logos
-Basecamp. It covers the intended create, propose, approve, execute, rotate,
-replacement-key activation, and state views.
+This directory contains the native Logos Basecamp module for the Quorum
+operator workflow.
 
-## Current contents
+## Components
 
-- metadata.json: Basecamp module metadata.
-- module.json: compatibility metadata for module tooling.
-- src/qml/QuorumView.qml: the interaction prototype.
+- `metadata.json` is the canonical `ui_qml` module manifest.
+- `src/quorum_ui.rep` defines the Qt Remote Objects contract.
+- `QuorumUiBackend` runs the Quorum binary asynchronously through `QProcess`.
+- `src/qml/QuorumView.qml` provides create, propose, approve, execute, rotate,
+  replacement activation, and state views.
+- `CMakeLists.txt` and `flake.nix` package the module with the current Logos
+  module builder.
 
-## Integration status
+The backend never invokes a shell. It validates the executable path, accepts
+only known Quorum commands, forces `RISC0_DEV_MODE=0`, uses a mode-0700 working
+directory, streams stdout and stderr, rejects concurrent operations, supports
+cancellation, and terminates operations after 30 minutes. The Rust CLI keeps
+member and rotation files at mode 0600.
 
-This is not currently an installable Basecamp module. The directory does not
-contain the native process backend, CMake project, Nix flake, generated SDK
-bindings, or LGX packaging needed to run it in Basecamp.
+## Build
 
-The QML expects a backend object capable of executing the Quorum CLI without a
-shell, reporting asynchronous output, exposing busy state, and cancelling a
-running proof. That backend still needs to be implemented against the current
-Basecamp module SDK.
+Build the Quorum binary first:
 
-## Backend requirements
+```bash
+cargo build --release -p quorum-cli
+```
 
-A production module should:
+Then build the LGX with the official module builder:
 
-1. Launch a configured quorum binary with an argument list through QProcess.
-2. Set RISC0_DEV_MODE=0 for any production approval.
-3. Use a dedicated mode-0700 working directory.
-4. Keep member and rotation files at mode 0600.
-5. Stream stdout and stderr without exposing secret file contents.
-6. Support cancellation, timeout, and process cleanup.
-7. Validate the binary path and surface structured failures.
-8. Integrate the LEZ transaction composer rather than treating local CLI state
-   as on-chain state.
+```bash
+cd apps/basecamp-quorum
+nix build .#lgx
+```
 
-Until that work and package verification are complete, use
-../../scripts/demo.sh for the supported local workflow.
+Install the resulting package with `lgpm`, select the absolute path to
+`target/release/quorum`, and choose a protected working directory.
+
+For a non-Nix developer build, set `LOGOS_MODULE_BUILDER_ROOT` and configure an
+out-of-tree CMake build. Qt 6 and the builder's generated SDK are required.
+
+## Current boundary
+
+The source follows the current Basecamp backend contract, but this environment
+does not contain Nix, CMake, or Qt development packages. No LGX artifact has
+been built or installed here.
+
+The controls currently drive the offline CLI workflow. The Rust transaction
+composer is implemented in `crates/quorum-composer`, but existing private
+credential updates require a supported LEZ wallet to scan encrypted state and
+provide membership proofs. Connecting that wallet/composer flow to Basecamp is
+still required for live chain operation.

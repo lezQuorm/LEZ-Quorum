@@ -1,75 +1,54 @@
 # Known Limitations
 
 Quorum is an experimental implementation, not a production-ready treasury.
-The following items define the remaining engineering boundary.
 
-## Live shielded-account authorization
+## Deployment and lifecycle evidence
 
-The current threshold witness proves knowledge of a Quorum member secret.
-Although lez-compat models LEZ v0.3 account commitments and validation rules,
-the circuit does not yet prove control of a live shielded LEZ account or bind a
-member secret to that account credential.
+The gate has not been deployed to a standalone sequencer or public LEZ testnet.
+There is no funded vault, deployed program ID, account sequence, transaction
+hash set, or network cost record in this repository. The optional RPC client
+compiles and implements submit-once, hash confirmation, and public state reads,
+but it has not been exercised against a running sequencer here.
 
-Impact: membership privacy and threshold behavior are demonstrated, but the
-identity primitive is still Quorum-specific.
+## Wallet integration
 
-Required work: define the credential binding, include it in the witness and
-journal, and test it against current LEZ shielded account data.
+The composer accepts current public and private account witnesses prepared by
+a wallet. Constructing those witnesses for an existing private credential
+requires the wallet's encrypted-state scan and commitment membership proof.
+The offline CLI is still a local state mirror and does not fetch or reconcile
+live chain state.
 
-## Risc0 receipt transaction composition
+## Basecamp package
 
-The SPEL gate uses env::verify, which expects the threshold receipt to be
-provided as an assumption to the outer execution. The repository does not yet
-contain a LEZ transaction builder that decodes the CLI proof artifact, adds
-that assumption, and submits the approve instruction.
-
-Impact: the gate compiles and its validation logic is tested, but the receipt
-path is not yet executable end to end on a sequencer.
-
-Required work: implement the composer against the current LEZ executor API and
-add tampered-receipt and missing-assumption integration tests.
-
-## Network integration
-
-There is no RPC client, deployed gate program ID, funded treasury vault, or
-captured testnet transaction sequence in this repository.
-
-Impact: create, approve, execute, and rotate are local state-machine workflows,
-not evidence of a live LEZ deployment.
-
-Required work: add the transaction client, deploy to the current supported
-network, and record reproducible account and transaction evidence.
-
-## Basecamp module
-
-apps/basecamp-quorum contains QML views and manifests only. It does not include
-the C++/Qt process backend, CMake or Nix packaging, cancellation plumbing, or a
-built LGX artifact.
-
-Impact: the interface is a design and integration prototype, not an installable
-Basecamp module.
+The Basecamp directory contains the QML view, Qt Remote Objects contract,
+native `QProcess` backend, CMake project, and Nix flake. This environment lacks
+Nix, CMake, and Qt development packages, so no LGX artifact has been built,
+installed, or tested. The UI currently drives the offline CLI; live wallet and
+composer operations need a supported Basecamp/LEZ wallet binding.
 
 ## Key operations
 
-The CLI stores local member secrets and rotation bundles with mode 0600.
-Generation and activation are implemented, but secure out-of-band key
-distribution, backup, recovery, hardware-backed storage, and deletion of
-retired secrets are operator responsibilities.
+The CLI protects local member secrets and rotation bundles with mode 0600, and
+the Basecamp backend uses a mode-0700 working directory. Secure distribution,
+backup, recovery, hardware-backed storage, and reliable deletion of retired
+credentials remain operator responsibilities.
 
 ## Security assurance
 
-The circuit and gate have not received an independent security audit. Network
-metadata resistance, denial of service, compromised proving hosts, key
-recovery, and operational governance require deployment-specific review.
+No independent audit has been completed. Fuzzing of state decoding, journal
+validation, and malformed instruction inputs is not yet comprehensive. Network
+metadata resistance, denial of service, compromised proving hosts, and
+operational governance need deployment-specific review.
 
 ## Performance
 
-The recorded real aggregated proof takes several minutes on the benchmark
-machine. Network verification cost and transaction compute usage have not been
-measured because there is no live deployment.
+The credential-aware aggregated proof takes about ten minutes on the recorded
+machine. The outer LEZ privacy proof, sequencer verification cost, transaction
+compute use, confirmation latency, and fees have not been measured in real mode
+against a network.
 
-## Protocol compatibility
+## Compatibility
 
-LEZ, SPEL, NSSA, and Risc0 interfaces are pinned to repository revisions and
-crate versions. Compatibility must be revalidated before upgrading any of
-those dependencies.
+LEZ v0.2.0, SPEL commit `0cb7e098`, and Risc0 3.0.5 are pinned. Upgrade work
+must regenerate both circuit image IDs and IDL, then rerun real proofs,
+composition tests, and network lifecycle tests.
