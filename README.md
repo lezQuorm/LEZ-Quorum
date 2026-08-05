@@ -7,10 +7,11 @@ members.
 
 Quorum is an experimental implementation, not a production treasury. The
 credential-aware Risc0 circuit, SPEL gate, recursive private transaction
-composer, local operator workflow, generated IDL, and Basecamp module source
-are implemented and tested locally. The gate has not been deployed to an LEZ
-testnet, the Basecamp package has not been built in this environment, and the
-code has not received an independent audit.
+composer, operator workflow, and generated IDL are implemented and tested.
+The complete lifecycle has been exercised against a local LEZ v0.2.0
+standalone sequencer, and both native and portable Basecamp LGX packages build
+from the pinned Nix lock. Quorum has not been deployed to a public LEZ testnet
+and has not received an independent audit.
 
 ## What Quorum provides
 
@@ -21,15 +22,17 @@ code has not received an independent audit.
 | Credential control | The threshold proof binds enrollment to an LEZ private account; the outer LEZ privacy proof proves control of that same account |
 | Threshold policy | Default and per-tier thresholds with transfer amount caps |
 | Private transaction composition | A verified threshold receipt is attached to the gate execution and recursively wrapped by the LEZ privacy circuit |
-| Treasury execution | The gate validates the vault PDA and approved recipient before emitting a token transfer chained call |
+| Treasury execution | The gate initializes a signed treasury PDA, then validates the vault and recipient before emitting a token transfer chained call |
 | Membership rotation | A threshold-approved root change retires the previous member set atomically |
 | Client contract | Complete IDL, generated-client validation, and instruction codec round-trip tests |
-| Operator surfaces | Offline CLI plus a native Basecamp QProcess module source |
+| Network lifecycle | A reproducible example deploys, initializes, funds, approves, executes, and verifies final state through sequencer RPC |
+| Operator surfaces | Protected offline CLI plus native and portable Basecamp LGX packages |
 
 ## Protocol flow
 
 1. Operators create a constitution with a threshold, member count, credential
-   Merkle root, and optional spending tiers.
+   Merkle root, and optional spending tiers, then initialize its signed
+   program-derived treasury holding.
 2. A proposal is bound to its multisig account and constitution version.
 3. Members prove membership of LEZ private-account credentials and derive
    distinct proposal-bound nullifiers in the Risc0 guest.
@@ -45,7 +48,7 @@ Credential account IDs remain private transaction inputs. Proposal content,
 policy, approval count, Quorum nullifiers, and governance changes are public by
 design.
 
-## Quick start
+## Offline quick start
 
 Requirements: Rust 1.91 or newer and the Risc0 toolchain used by the workspace.
 
@@ -82,6 +85,56 @@ RISC0_DEV_MODE=0 \
   cargo run -p quorum-prover --example prove_threshold --release
 ```
 
+## Local LEZ lifecycle
+
+Run an LEZ v0.2.0 standalone sequencer in one terminal:
+
+```bash
+cd ../logos-execution-zone
+RISC0_DEV_MODE=1 just run-sequencer standalone
+```
+
+In this repository, run the complete 2-of-3 treasury lifecycle. The final
+argument is a deterministic identity seed from 1 through 250. It domains both
+the public test accounts and private member credentials, so choose a new value
+when reusing a persistent chain.
+
+```bash
+RISC0_DEV_MODE=1 cargo run -p quorum-composer --features network \
+  --example local_lez_e2e -- http://127.0.0.1:3040 91
+```
+
+The example deploys the gate, creates and funds the vault, submits a private
+threshold approval, executes the token transfer, re-reads chain state, and
+finishes with:
+
+```text
+vault_balance=500
+recipient_balance=250
+proposal_status=Executed
+RESULT=PASS
+```
+
+For real Risc0 receipts, start the sequencer and example without
+`RISC0_DEV_MODE=1`. This is substantially slower and is the intended path for
+cryptographic deployment evidence. The responsive lifecycle result above uses
+development receipts; the real threshold receipt is benchmarked separately.
+
+## Basecamp package
+
+Nix supplies the pinned CMake, Ninja, Qt 6.9.2, Qt Remote Objects, Logos module
+builder, and LGX bundler environment:
+
+```bash
+cd apps/basecamp-quorum
+nix build .#generate .#lib .#lgx .#lgx-portable
+```
+
+The native LGX targets the Basecamp Nix runtime; the portable LGX bundles its
+non-Qt external libraries and expects Basecamp to provide Qt and Logos QML
+modules. See [the module README](apps/basecamp-quorum/README.md) for install
+and runtime boundaries.
+
 ## Repository map
 
 | Path | Purpose |
@@ -93,7 +146,7 @@ RISC0_DEV_MODE=0 \
 | `crates/quorum-composer` | LEZ private transaction composition, RPC submission, confirmation, and public state reads |
 | `crates/quorum-sdk` | Member, proposal, proof, rotation, and local state APIs |
 | `crates/quorum-cli` | Offline operator workflow and protected key files |
-| `crates/lez-compat` | LEZ v0.3 private account ID and account commitment compatibility |
+| `crates/lez-compat` | LEZ private account ID and account commitment compatibility |
 | `guests/quorum-threshold` | Embedded Risc0 threshold guest |
 | `programs/quorum-gate` | SPEL program, complete IDL, and IDL generator |
 | `apps/basecamp-quorum` | Basecamp QML view, native backend, and module packaging |
@@ -102,6 +155,7 @@ RISC0_DEV_MODE=0 \
 
 ```bash
 cargo fmt --all -- --check
+RISC0_DEV_MODE=1 cargo check --workspace --all-targets --all-features
 RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets --all-features -- -D warnings
 RISC0_DEV_MODE=1 cargo test --workspace --all-features
 ```
@@ -115,6 +169,14 @@ cargo run -p quorum-gate-methods --example generate_idl
 The CLI writes `quorum.json`, `member-N.json`, `rotation.json`, and proof
 artifacts with mode 0600. These files contain operational state or secrets and
 must not be committed.
+
+## Deployment status
+
+Local standalone deployment is verified and reproducible. A public testnet
+deployment remains an operator action because it requires a public compatible
+RPC endpoint, funded deployment authority, treasury funding, and approval of
+the resulting program and account IDs. Local results must not be presented as
+public-testnet evidence.
 
 ## Documentation
 

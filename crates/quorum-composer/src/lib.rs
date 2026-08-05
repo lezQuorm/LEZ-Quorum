@@ -379,9 +379,24 @@ pub mod network {
             &self,
             transaction: PrivacyPreservingTransaction,
         ) -> Result<HashType, NetworkError> {
+            self.submit_transaction_and_confirm(LeeTransaction::PrivacyPreserving(transaction))
+                .await
+        }
+
+        /// Submits any LEZ transaction once and polls its hash to confirmation.
+        ///
+        /// This is used by deployment and public lifecycle tooling while the
+        /// privacy-specific method remains the narrow API for wallet callers.
+        ///
+        /// # Errors
+        /// Any `NetworkError` variant.
+        pub async fn submit_transaction_and_confirm(
+            &self,
+            transaction: LeeTransaction,
+        ) -> Result<HashType, NetworkError> {
             let hash = self
                 .client
-                .send_transaction(LeeTransaction::PrivacyPreserving(transaction))
+                .send_transaction(transaction)
                 .await
                 .map_err(|error| NetworkError::Submit(error.to_string()))?;
             let started = Instant::now();

@@ -5264,12 +5264,14 @@ dependencies = [
 name = "quorum-composer"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bincode",
  "borsh",
  "common",
  "lee",
  "lee_core",
  "lez-compat",
+ "programs",
  "quorum-circuit",
  "quorum-core",
  "quorum-gate-core",
@@ -5279,7 +5281,9 @@ dependencies = [
  "risc0-zkvm",
  "sequencer_service_rpc",
  "serde_json",
+ "sha2",
  "thiserror 2.0.19",
+ "token_core",
  "tokio",
 ]
 

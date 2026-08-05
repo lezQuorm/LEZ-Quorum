@@ -7,7 +7,7 @@ use quorum_gate_core::{
     ThresholdClaim, THRESHOLD_IMAGE_ID,
 };
 use nssa_core::{
-    account::{AccountId, AccountWithMetadata},
+    account::{Account, AccountId, AccountWithMetadata},
     program::{AccountPostState, ChainedCall, Claim, PdaSeed},
 };
 use risc0_zkvm::{guest::env, serde::to_vec};
@@ -47,6 +47,44 @@ mod quorum_gate {
             multisig.account,
             Claim::Authorized,
         )];
+        Ok(output)
+    }
+
+    #[instruction]
+    pub fn initialize_vault(
+        ctx: ProgramContext,
+        #[account(mut, owner = self_program_id, signer)] multisig: AccountWithMetadata,
+        #[account(mut)] token_definition: AccountWithMetadata,
+        #[account(mut)] vault: AccountWithMetadata,
+    ) -> SpelResult {
+        decode_constitution(&multisig.account.data)
+            .unwrap_or_else(|_| fail(2005, "cannot decode constitution state"));
+
+        let seed = quorum_gate_core::vault_pda_seed(multisig.account_id.value());
+        let expected_vault = AccountId::for_public_pda(&ctx.self_program_id, &PdaSeed::new(seed));
+        if vault.account_id != expected_vault || vault.account != Account::default() {
+            fail(
+                GateError::InvalidVault.code() as u16,
+                &GateError::InvalidVault.to_string(),
+            );
+        }
+
+        let mut vault_for_callee = vault.clone();
+        vault_for_callee.is_authorized = true;
+        let call = ChainedCall::new(
+            token_definition.account.program_owner,
+            vec![token_definition.clone(), vault_for_callee],
+            &quorum_gate_core::TokenInitializeInstruction::InitializeAccount,
+        )
+        .with_pda_seeds(vec![PdaSeed::new(seed)]);
+
+        let mut output = SpelOutput::empty();
+        output.post_states = vec![
+            AccountPostState::new(multisig.account),
+            AccountPostState::new(token_definition.account),
+            AccountPostState::new(vault.account),
+        ];
+        output.chained_calls.push(call);
         Ok(output)
     }
 

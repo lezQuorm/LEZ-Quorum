@@ -45,12 +45,14 @@ and refuses proposal or credential substitution.
 
 ## Remaining assurance work
 
-The local proof/composition boundary is tested, including missing,
-wrong-image, malformed, and substituted inputs. It has not yet been exercised
-through a standalone sequencer lifecycle or testnet deployment. Treasury
-funding, wallet scanning, retries, state reconciliation, Basecamp packaging,
-and dependency behavior still require runtime evidence. An independent circuit
-and program audit is required before production use.
+The local proof and composition boundary is tested, including missing,
+wrong-image, malformed, and substituted inputs. A standalone sequencer
+lifecycle covers deployment, treasury initialization and funding, private
+approval, execution, confirmation, and final state reads. Native and portable
+Basecamp packages also build from the pinned Nix closure. Public testnet
+behavior, existing-account wallet scans, failure retries, production state
+reconciliation, and an independent circuit and program audit remain required
+before production use.
 
 Quorum does not hide proposal contents, approval count, policy changes, or
 rotation timing. It cannot prevent approval withholding, loss of credentials,

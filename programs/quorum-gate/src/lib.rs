@@ -4,6 +4,7 @@ include!(concat!(env!("OUT_DIR"), "/methods.rs"));
 mod tests {
     use quorum_gate_core::{
         ActionData, OnChainThresholdJournal, QuorumInstruction, ThresholdClaim, TierPolicy,
+        TokenInitializeInstruction,
     };
 
     /// Byte-level guard for `quorum_gate_core::TokenTransferInstruction`.
@@ -28,6 +29,15 @@ mod tests {
             risc0_zkvm::serde::to_vec(&mirror).unwrap(),
             risc0_zkvm::serde::to_vec(&real).unwrap(),
             "TokenTransferInstruction serde mirror drifted from token_core::Instruction"
+        );
+    }
+
+    #[test]
+    fn initialize_instruction_mirror_matches_token_core_bytes() {
+        assert_eq!(
+            risc0_zkvm::serde::to_vec(&TokenInitializeInstruction::InitializeAccount).unwrap(),
+            risc0_zkvm::serde::to_vec(&token_core::Instruction::InitializeAccount).unwrap(),
+            "TokenInitializeInstruction serde mirror drifted from token_core::Instruction"
         );
     }
 
@@ -100,6 +110,7 @@ mod tests {
                 claim: ThresholdClaim { journal },
             },
             QuorumInstruction::Execute { proposal_id: 3 },
+            QuorumInstruction::InitializeVault,
         ];
         for instruction in instructions {
             let words = risc0_zkvm::serde::to_vec(&instruction).expect("instruction encoding");

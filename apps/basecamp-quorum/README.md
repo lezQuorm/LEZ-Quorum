@@ -21,33 +21,53 @@ member and rotation files at mode 0600.
 
 ## Build
 
-Build the Quorum binary first:
+Requirements are Rust, the Risc0 workspace toolchain, and Nix with flakes
+enabled. The committed `flake.lock` pins the Logos builder and LGX bundler.
+
+Build the Quorum CLI first:
 
 ```bash
 cargo build --release -p quorum-cli
 ```
 
-Then build the LGX with the official module builder:
+Build named native and portable package links:
 
 ```bash
 cd apps/basecamp-quorum
-nix build .#lgx
+nix build .#generate .#lib
+nix build .#lgx --out-link result-lgx
+nix build .#lgx-portable --out-link result-lgx-portable
 ```
 
-Install the resulting package with `lgpm`, select the absolute path to
+The installable archives are:
+
+```text
+result-lgx/logos-quorum_ui-module.lgx
+result-lgx-portable/logos-quorum_ui-module.lgx
+```
+
+The native archive targets a Nix-based Basecamp installation. The portable
+archive contains the non-Qt shared libraries needed by the module and expects
+Basecamp to provide Qt 6 and the Logos QML modules. Import the appropriate LGX
+through the Basecamp module manager, select the absolute path to
 `target/release/quorum`, and choose a protected working directory.
 
-For a non-Nix developer build, set `LOGOS_MODULE_BUILDER_ROOT` and configure an
-out-of-tree CMake build. Qt 6 and the builder's generated SDK are required.
+## Verified build
 
-## Current boundary
+The pinned build has been completed with Nix 2.35.1, CMake, Ninja, Qt 6.9.2,
+Qt QML, and Qt Remote Objects. Both archives contain `QuorumView.qml`,
+`quorum_ui_plugin.so`, `quorum_ui_replica_factory.so`, and their manifests.
+The native plugin closure resolves all linked libraries, and Qt `qmlformat`
+parses the packaged view successfully.
+The module-builder standalone preview also starts headlessly with the app,
+capability host, and Quorum `ui-host` processes running without a plugin or QML
+load error. A desktop Basecamp session is still required for visual interaction
+and capture.
 
-The source follows the current Basecamp backend contract, but this environment
-does not contain Nix, CMake, or Qt development packages. No LGX artifact has
-been built or installed here.
+## Runtime boundary
 
-The controls currently drive the offline CLI workflow. The Rust transaction
-composer is implemented in `crates/quorum-composer`, but existing private
-credential updates require a supported LEZ wallet to scan encrypted state and
-provide membership proofs. Connecting that wallet/composer flow to Basecamp is
-still required for live chain operation.
+The controls drive the protected offline CLI workflow. Live private credential
+updates additionally require a supported LEZ wallet to scan encrypted state
+and provide current membership proofs. Connecting that wallet/composer flow to
+Basecamp remains integration work; the standalone LEZ lifecycle is available
+through the `local_lez_e2e` example documented in the repository README.

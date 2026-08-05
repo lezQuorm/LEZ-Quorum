@@ -50,7 +50,8 @@ Each approval proves:
 ## Gate layer
 
 `quorum-gate-core` owns serializable state and deterministic validation rules.
-`quorum-gate` exposes initialize, propose, approve, and execute instructions.
+`quorum-gate` exposes constitution initialization, treasury initialization,
+proposal, approval, and execution instructions.
 
 Approve takes the multisig, proposal, and a variable-length list of authorized
 private credential accounts. The gate checks their proposal-scoped account-ID
@@ -86,14 +87,16 @@ multisig ID, version, action, required threshold, accepted nullifiers, and
 status.
 
 Rotation atomically replaces the root and member count and increments the
-version, making old proposals and credentials stale. Transfer execution
-derives the treasury vault PDA from the multisig ID, validates the approved
-recipient, and emits a token-program chained call authorized by the vault PDA
-seed.
+version, making old proposals and credentials stale. A constitution signer
+initializes the deterministic treasury PDA through a
+token-program chained call. Transfer execution derives that PDA from the
+multisig ID, validates the approved recipient, and emits a second token-program
+chained call authorized by the same seed.
 
 ## Verification boundary
 
 Local tests execute the compiled threshold guest, gate guest, and LEZ privacy
 circuit together, including missing and malformed assumptions. A real
 non-development threshold receipt is also generated and host-verified. A
-standalone sequencer lifecycle and live testnet deployment are not yet recorded.
+complete local standalone sequencer lifecycle is also exercised by the
+`local_lez_e2e` example. Public testnet deployment is not yet recorded.

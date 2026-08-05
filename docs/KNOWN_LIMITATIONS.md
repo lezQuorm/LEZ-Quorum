@@ -4,11 +4,11 @@ Quorum is an experimental implementation, not a production-ready treasury.
 
 ## Deployment and lifecycle evidence
 
-The gate has not been deployed to a standalone sequencer or public LEZ testnet.
-There is no funded vault, deployed program ID, account sequence, transaction
-hash set, or network cost record in this repository. The optional RPC client
-compiles and implements submit-once, hash confirmation, and public state reads,
-but it has not been exercised against a running sequencer here.
+The gate and token lifecycle have been exercised against a persistent local LEZ
+v0.2.0 standalone sequencer in development-proof mode. The run deploys the
+program, initializes and funds the treasury PDA, records a private threshold
+approval, executes a transfer, and verifies final public state through RPC. No
+public LEZ testnet deployment or public-network cost record exists yet.
 
 ## Wallet integration
 
@@ -20,11 +20,13 @@ live chain state.
 
 ## Basecamp package
 
-The Basecamp directory contains the QML view, Qt Remote Objects contract,
-native `QProcess` backend, CMake project, and Nix flake. This environment lacks
-Nix, CMake, and Qt development packages, so no LGX artifact has been built,
-installed, or tested. The UI currently drives the offline CLI; live wallet and
-composer operations need a supported Basecamp/LEZ wallet binding.
+The Basecamp native and portable LGX packages build successfully with the
+pinned Nix, CMake, Ninja, Qt 6.9.2, Qt QML, and Qt Remote Objects closure. The
+plugins resolve their native dependencies and the QML parses with the pinned
+Qt tooling. The module-builder standalone host starts the Quorum UI plugin
+headlessly without a load error. Installation, visual interaction, and capture
+inside the released Basecamp desktop still require a GUI session; live wallet
+and composer operations require a supported Basecamp/LEZ wallet binding.
 
 ## Key operations
 
@@ -42,10 +44,14 @@ operational governance need deployment-specific review.
 
 ## Performance
 
-The credential-aware aggregated proof takes about ten minutes on the recorded
-machine. The outer LEZ privacy proof, sequencer verification cost, transaction
-compute use, confirmation latency, and fees have not been measured in real mode
-against a network.
+Real Risc0 proving is CPU intensive and takes minutes per aggregated private
+approval on the recorded machine. A full real-mode lifecycle attempt reached
+approximately 8.6 GiB resident memory in the final privacy-wrapper prover and
+was killed when the 15 GiB workstation and its 4 GiB swap were exhausted by
+the concurrent desktop session. Operators must provide sufficient free memory
+or swap before running the nested real-proof path. Local sequencer confirmations
+have been exercised; public-network compute accounting, latency, and fees remain
+network-specific and have not been measured.
 
 ## Compatibility
 

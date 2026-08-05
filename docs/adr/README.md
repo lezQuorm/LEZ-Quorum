@@ -43,8 +43,8 @@ prior proposals stale.
 The SPEL guest verifies the pinned threshold image and journal with env::verify.
 Nested verification requires the host transaction executor to attach the
 threshold receipt as an assumption. `quorum-composer` performs this step and
-then attaches the gate receipt to the LEZ privacy circuit. Standalone sequencer
-and testnet evidence remain pending.
+then attaches the gate receipt to the LEZ privacy circuit. A local standalone
+sequencer lifecycle is verified; public testnet evidence remains pending.
 
 ## ADR-0006: Isolate LEZ account compatibility
 

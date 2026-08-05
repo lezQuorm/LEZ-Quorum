@@ -742,6 +742,8 @@ pub enum QuorumInstruction {
         /// Target proposal id.
         proposal_id: u64,
     },
+    /// Initializes this multisig's program-derived treasury token holding.
+    InitializeVault,
 }
 
 /// Derives the marker PDA that proves *on-chain* what the gate demanded.
@@ -804,6 +806,23 @@ pub enum TokenTransferInstruction {
         /// Amount in LEZ base units.
         amount_to_transfer: u128,
     },
+}
+
+/// Serde mirror used to encode LEZ token `InitializeAccount`.
+///
+/// Risc0 serde encodes enum variants by their zero-based position. The three
+/// placeholders preserve the position of `token_core::Instruction::InitializeAccount`
+/// without pulling the token program's metadata types into the gate core crate.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TokenInitializeInstruction {
+    /// Placeholder for token instruction index 0.
+    Transfer,
+    /// Placeholder for token instruction index 1.
+    NewFungibleDefinition,
+    /// Placeholder for token instruction index 2.
+    NewDefinitionWithMetadata,
+    /// Initializes an empty token holding for a definition account.
+    InitializeAccount,
 }
 
 #[must_use]

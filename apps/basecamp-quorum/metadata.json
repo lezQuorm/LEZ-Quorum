@@ -5,11 +5,11 @@
   "type": "ui_qml",
   "interface": "universal",
   "category": "privacy",
-  "description": "Private M-of-N multisig for LEZ: shielded proposals, approvals, rotation, and tiered spending",
+  "description": "Private M-of-N treasury for LEZ with anonymous approvals, member rotation, and tiered spending policy",
   "author": "FidelCoder",
   "main": "quorum_ui_plugin",
   "view": "qml/QuorumView.qml",
-  "dependencies": ["lez_core"],
+  "dependencies": [],
   "codegen": {
     "rep": "src/quorum_ui.rep"
   },

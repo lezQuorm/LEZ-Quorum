@@ -41,6 +41,30 @@
       ]
     },
     {
+      "name": "initialize_vault",
+      "accounts": [
+        {
+          "name": "multisig",
+          "writable": true,
+          "signer": true,
+          "init": false
+        },
+        {
+          "name": "token_definition",
+          "writable": true,
+          "signer": false,
+          "init": false
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "signer": false,
+          "init": false
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "propose",
       "accounts": [
         {
