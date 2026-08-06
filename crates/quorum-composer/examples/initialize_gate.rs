@@ -1,5 +1,5 @@
-//! Prepares a deterministic 1-of-1 testnet constitution for integration testing.
-//! The embedded demo key is public knowledge and must never control real funds.
+//! Prepares a deterministic 1-of-1 testnet constitution.
+//! The embedded test key is public and must not control funds.
 
 use std::time::Duration;
 
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
     println!("multisig=Public/{account_id}");
     println!("initialize_tx={expected_hash}");
     if !submit {
-        println!("submission=disabled (pass --submit to broadcast the demo transaction)");
+        println!("submission=disabled (pass --submit to broadcast)");
         println!("RESULT=PASS");
         return Ok(());
     }

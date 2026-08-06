@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Quorum end-to-end demo: a 2-of-3 treasury approves a transfer, rotates its
-# private member set, and activates the replacement keys.
-#
-# Uses RISC0_DEV_MODE=1 (fast mock proofs) for a quick local demo.
-# For REAL proofs, run with RISC0_DEV_MODE=0 (each proof takes minutes).
+# Runs the local 2-of-3 treasury lifecycle. Development receipts are the
+# default; set RISC0_DEV_MODE=0 for real proofs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 export RISC0_DEV_MODE="${RISC0_DEV_MODE:-1}"
 
-DEMO_DIR="${DEMO_DIR:-/tmp/quorum-demo}"
-rm -rf "$DEMO_DIR"
-mkdir -p "$DEMO_DIR"
-cd "$DEMO_DIR"
+RUN_DIR="${QUORUM_RUN_DIR:-}"
+if [[ -z "$RUN_DIR" ]]; then
+    RUN_DIR="$(mktemp -d /tmp/quorum-run.XXXXXX)"
+else
+    mkdir -p "$RUN_DIR"
+fi
+cd "$RUN_DIR"
 
 echo "== building CLI =="
 cargo build -q -p quorum-cli --manifest-path "$OLDPWD/Cargo.toml"
@@ -43,10 +43,10 @@ echo "   new member root: $NEW_ROOT"
 echo "== 6. final state =="
 "$Q" info
 
-echo "== 7. a rotated-out member's key is provably dead =="
+echo "== 7. reject a rotated-out member =="
 "$Q" propose --action transfer --recipient "$RECIPIENT" --amount 100 --tier 1
 if APPROVE_OUT="$("$Q" approve --member 1 --proposal 2 2>&1)"; then
-  echo "ERROR: a rotated-out member could still approve — security property broken!"
+  echo "ERROR: a rotated-out member could still approve"
   exit 1
 fi
 echo "PASS: member 1 (old set) rejected after rotation"
@@ -59,5 +59,7 @@ echo "== 8. activate and use the replacement member set =="
 "$Q" execute --proposal 3
 
 echo
-echo "demo artifacts: $(ls claims/ | tr '\n' ' ')"
-echo "NOTE: RISC0_DEV_MODE=$RISC0_DEV_MODE — set 0 for real proofs."
+echo "run directory: $RUN_DIR"
+echo "claim artifacts:"
+find claims -maxdepth 1 -type f -printf '  %f\n' | sort
+echo "RISC0_DEV_MODE=$RISC0_DEV_MODE"

@@ -1,9 +1,7 @@
 //! Host-side proving and verification for Quorum threshold proofs.
 //!
-//! Mirrors the proven `ProofGate` prover: strict `RISC0_DEV_MODE` handling,
-//! host-side statement evaluation first, succinct proofs via the default
-//! prover, receipt verification against the pinned image ID, and bincode
-//! serialization for transport.
+//! It validates the statement before proving, verifies the pinned image, and
+//! encodes receipts for transport.
 
 use std::env;
 
@@ -29,7 +27,7 @@ pub struct QuorumProof {
 pub enum DevModeStatus {
     /// Real proving (`0`/unset).
     Disabled,
-    /// Mock proving (`1`) — never acceptable for evidence.
+    /// Non-cryptographic test proving (`1`).
     Enabled,
 }
 

@@ -1,12 +1,6 @@
-//! # quorum-sdk — client-side toolkit
+//! Client API for member sets, proposals, proofs, and rotations.
 //!
-//! Everything a shielded member needs: create a member set, open proposals,
-//! generate **client-side approval proofs** (real mode for evidence, dev mode
-//! for fast tests), aggregate approvals, and apply actions — mirroring the
-//! on-chain gate state machine so the full flow is verifiable offline first.
-//!
-//! Privacy: member secrets are written only to `Member` values and (in the
-//! CLI) to `mode 600` secret files. They never enter proofs' journals.
+//! Member secrets remain in client state and are not written to proof journals.
 
 use quorum_circuit::{
     evaluate, ActionData, MemberApprovalWitness, ThresholdJournal, ThresholdWitness,
@@ -84,7 +78,7 @@ pub fn viewing_public_key_for_secret(
 pub struct Member {
     /// Canonical index in the member set.
     pub index: usize,
-    /// Identity secret — NEVER commit this to a public file.
+    /// Identity secret.
     pub secret: [u8; 32],
     /// LEZ regular-private-account identifier controlled by `secret`.
     #[serde(default)]
@@ -116,7 +110,7 @@ impl Member {
 /// A set of members and the shielded Merkle root over their commitments.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberSet {
-    /// Members (secrets included; keep this structure out of public evidence).
+    /// Members, including private identity material.
     pub members: Vec<Member>,
     /// Merkle root over member commitments — the only public artifact.
     pub root: [u8; 32],

@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# Refreshes crates/quorum-image-id/src/lib.rs with the compiled guest's image ID.
-# Run after ANY change to guests/quorum-threshold/guest/.
-#
-# The ID is computed from the guest ELF directly (risc0_zkvm::compute_image_id),
-# so this is fast and does NOT require RISC0_DEV_MODE=0 or a minutes-long proof.
+# Refreshes the pinned threshold guest image ID from the compiled ELF.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "== computing guest image id (no proving required) =="
+echo "== computing threshold image id =="
 OUTPUT="$(cargo run -q -p quorum-prover --example print_image_id 2>&1)"
 ARRAY="$(printf '%s\n' "$OUTPUT" | sed -n 's/^image_id rust: \[\(.*\)\]$/\1/p' | head -1)"
 if [[ -z "$ARRAY" ]]; then
@@ -22,7 +18,7 @@ python3 - "$TARGET" "$ARRAY" <<'PY'
 import re, sys
 
 path, array = sys.argv[1], sys.argv[2]
-# Format each number with underscore thousands separators (clippy: unreadable_literal).
+# Rust formatting for the pinned u32 array.
 formatted = ", ".join(f"{int(n):,}".replace(",", "_") for n in array.split(", "))
 src = open(path, encoding="utf-8").read()
 new = re.sub(
@@ -37,4 +33,4 @@ print(f"updated {path}")
 PY
 cargo fmt -q -p quorum-image-id
 
-echo "== done — verify with: cargo test -p quorum-image-id =="
+echo "== verify with: cargo test -p quorum-image-id =="

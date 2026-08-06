@@ -131,7 +131,6 @@ Rectangle {
             currentIndex: tabs.currentIndex
 
             Item {
-                // --- Create ---
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: Theme.spacing.medium
@@ -169,7 +168,6 @@ Rectangle {
             }
 
             Item {
-                // --- Propose ---
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: Theme.spacing.medium
@@ -211,7 +209,6 @@ Rectangle {
             }
 
             Item {
-                // --- Approve ---
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: Theme.spacing.medium
@@ -256,7 +253,6 @@ Rectangle {
             }
 
             Item {
-                // --- Rotate ---
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: Theme.spacing.medium
@@ -308,7 +304,6 @@ Rectangle {
             }
 
             Item {
-                // --- State ---
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: Theme.spacing.medium

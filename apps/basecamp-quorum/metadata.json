@@ -5,14 +5,12 @@
   "type": "ui_qml",
   "interface": "universal",
   "category": "privacy",
-  "description": "Private M-of-N treasury for LEZ with anonymous approvals, member rotation, and tiered spending policy",
+  "description": "Private M-of-N treasury for Logos Execution Zone",
   "author": "FidelCoder",
   "main": "quorum_ui_plugin",
   "view": "qml/QuorumView.qml",
   "dependencies": [],
-  "codegen": {
-    "rep": "src/quorum_ui.rep"
-  },
+  "codegen": { "rep": "src/quorum_ui.rep" },
   "nix": {
     "packages": {
       "build": [],

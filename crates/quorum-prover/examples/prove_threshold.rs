@@ -1,10 +1,6 @@
-//! Generates a real (`RISC0_DEV_MODE=0`) 2-of-3 threshold proof and prints
-//! timing, receipt size, and the pinned image ID. Set `QUORUM_PROOF_OUTPUT` to
-//! persist the JSON artifact for the composer's ignored real-receipt test.
+//! Generates and verifies a real 2-of-3 threshold proof.
 //!
-//! ```bash
-//! RISC0_DEV_MODE=0 cargo run -p quorum-prover --example prove_threshold --release
-//! ```
+//! `QUORUM_PROOF_OUTPUT` stores the proof as JSON when set.
 
 use std::time::Instant;
 
@@ -68,8 +64,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("proof artifact: {path}");
     }
 
-    // Print the image ID as a rust array so it can be pasted into
-    // crates/quorum-image-id/src/lib.rs.
     let words: Vec<String> = threshold_image_id().iter().map(u32::to_string).collect();
     println!("image_id rust: [{}]", words.join(", "));
     Ok(())

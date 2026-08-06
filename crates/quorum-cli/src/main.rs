@@ -1,20 +1,4 @@
-//! # Quorum CLI
-//!
-//! Offline-first multisig tooling. Everything runs locally: create the member
-//! set + constitution, propose, generate **client-side approval proofs**,
-//! aggregate, and apply. On-chain submission (the claim artifacts) is
-//! documented in `docs/DEPLOYMENT.md` and the demo runbook.
-//!
-//! ```bash
-//! quorum create --threshold 2 --members 3
-//! quorum propose --action transfer --recipient <hex> --amount 500 --tier 1
-//! quorum approve --member 0 --proposal 0        # real proof (RISC0_DEV_MODE=0)
-//! quorum approve --member 1 --proposal 0
-//! quorum execute --proposal 0
-//! quorum info
-//! # Aggregated mode: M approvals in one receipt
-//! quorum approve-all --proposal 0 --members 0,1
-//! ```
+//! Local CLI for Quorum member, proposal, proof, and rotation workflows.
 
 use std::path::{Path, PathBuf};
 
@@ -29,8 +13,7 @@ const MEMBER_FILE_PREFIX: &str = "member-";
 const CLAIMS_DIR: &str = "claims";
 const ROTATION_FILE: &str = "rotation.json";
 
-/// The local state file: multisig mirror + member commitments + secrets.
-/// Permissions are forced to 0600 — never commit this file.
+/// Local multisig state and member commitments.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct QuorumFile {
     multisig: Multisig,
