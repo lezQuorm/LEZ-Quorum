@@ -1,8 +1,9 @@
 # Privacy Model
 
 Quorum hides member identities and approval attribution while keeping treasury
-policy and execution auditable. This document describes the implemented local
-protocol; it does not claim network-level anonymity or a completed deployment.
+policy and execution auditable. This document describes the implemented
+protocol; it does not claim network-level anonymity or a completed funded
+public treasury lifecycle.
 
 ## Credential statement
 
@@ -62,6 +63,6 @@ unlinkability at the transport layer.
 
 The privacy claim depends on SHA-256 preimage resistance, Risc0 proof
 soundness, the pinned LEZ account derivation, correct receipt composition,
-secure credential handling, and the privacy circuit in the pinned LEZ v0.2.0
+secure credential handling, and the privacy circuit in the pinned LEZ v0.2.2
 dependency. A compromised proving host can disclose witnesses before proof
 generation even if the resulting transaction is private.

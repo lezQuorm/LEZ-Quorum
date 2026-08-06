@@ -4,11 +4,15 @@ Quorum is an experimental implementation, not a production-ready treasury.
 
 ## Deployment and lifecycle evidence
 
-The gate and token lifecycle have been exercised against a persistent local LEZ
-v0.2.0 standalone sequencer in development-proof mode. The run deploys the
-program, initializes and funds the treasury PDA, records a private threshold
-approval, executes a transfer, and verifies final public state through RPC. No
-public LEZ testnet deployment or public-network cost record exists yet.
+The gate and token lifecycle have been exercised against the official local LEZ
+v0.2.2 standalone sequencer in both development and real-proof modes. The run
+deploys the program, initializes and funds the treasury PDA, records a private
+threshold approval, executes a transfer, and verifies final state through RPC.
+The gate is deployed on the public testnet, and a public wallet account has
+been initialized and funded through the Piñata claim. A complete public Quorum
+treasury lifecycle and public-network cost record do not yet exist. The
+sequencer RPC confirms the deployment in block 693, while the public explorer
+indexer did not yet return that block or transaction during verification.
 
 ## Wallet integration
 
@@ -44,17 +48,16 @@ operational governance need deployment-specific review.
 
 ## Performance
 
-Real Risc0 proving is CPU intensive and takes minutes per aggregated private
-approval on the recorded machine. A full real-mode lifecycle attempt reached
-approximately 8.6 GiB resident memory in the final privacy-wrapper prover and
-was killed when the 15 GiB workstation and its 4 GiB swap were exhausted by
-the concurrent desktop session. Operators must provide sufficient free memory
-or swap before running the nested real-proof path. Local sequencer confirmations
-have been exercised; public-network compute accounting, latency, and fees remain
-network-specific and have not been measured.
+Real Risc0 proving is CPU intensive. The complete nested threshold, gate, and
+privacy lifecycle passed on a 15 GiB workstation after swap was expanded to
+21 GiB and competing desktop workloads were reduced. Operators must provide
+similar memory headroom. Local sequencer confirmations have been exercised;
+public-network compute accounting, latency, and fees remain network-specific
+and have not been measured.
 
 ## Compatibility
 
-LEZ v0.2.0, SPEL commit `0cb7e098`, and Risc0 3.0.5 are pinned. Upgrade work
-must regenerate both circuit image IDs and IDL, then rerun real proofs,
-composition tests, and network lifecycle tests.
+LEZ v0.2.2 commit `d6e4ae694e7419f5906b340c232704466a1917b7`, the v0.2.2
+SPEL compatibility commit `1fef85203c3130676a49aaed1b4387d16be9fe94`, and Risc0
+3.0.5 are pinned. Upgrade work must regenerate both circuit image IDs and IDL,
+then rerun real proofs, composition tests, and network lifecycle tests.

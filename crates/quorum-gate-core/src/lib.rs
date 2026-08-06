@@ -878,6 +878,7 @@ mod tests {
             let p = tree.proof_for(&member_commitment(&secret)).expect("proof");
             quorum_circuit::MemberApprovalWitness {
                 member_secret: secret,
+                viewing_public_key: [0_u8; quorum_core::VIEWING_PUBLIC_KEY_LEN],
                 account_identifier: 0,
                 leaf_index: p.leaf_index,
                 siblings: p.siblings,
@@ -918,6 +919,7 @@ mod tests {
             required_threshold: 1,
             approvals: vec![quorum_circuit::MemberApprovalWitness {
                 member_secret: secrets[1],
+                viewing_public_key: [0_u8; quorum_core::VIEWING_PUBLIC_KEY_LEN],
                 account_identifier: 0,
                 leaf_index: p.leaf_index,
                 siblings: p.siblings,
@@ -1153,8 +1155,16 @@ mod tests {
     #[test]
     fn credentials_are_order_independent_but_cannot_be_substituted_or_reused() {
         let credential_ids = [
-            lez_compat::private_account_id(&[1_u8; 32], 0),
-            lez_compat::private_account_id(&[2_u8; 32], 0),
+            lez_compat::private_account_id(
+                &[1_u8; 32],
+                &[0_u8; lez_compat::VIEWING_PUBLIC_KEY_LEN],
+                0,
+            ),
+            lez_compat::private_account_id(
+                &[2_u8; 32],
+                &[0_u8; lez_compat::VIEWING_PUBLIC_KEY_LEN],
+                0,
+            ),
         ];
         let (_, journal) = witness();
         let mut onchain = OnChainThresholdJournal::from(&journal);

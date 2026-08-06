@@ -15,6 +15,7 @@ ThresholdWitness {
     required_threshold,
     approvals: Vec<MemberApprovalWitness> {
         member_secret,       // LEZ nullifier secret key
+        viewing_public_key,  // LEZ ML-KEM viewing public key
         account_identifier,  // LEZ regular-private-account identifier
         leaf_index,
         siblings,
@@ -25,14 +26,16 @@ ThresholdWitness {
 }
 ```
 
-For each approval the guest follows the pinned LEZ v0.3 derivation:
+For each approval the guest follows the pinned LEZ v0.2.2 derivation:
 
 1. derive the nullifier public key from the secret;
-2. derive the regular private account ID from that key and identifier;
-3. blind the account ID into the Quorum member commitment;
-4. verify its SHA-256 Merkle path;
-5. derive a proposal- and version-bound Quorum nullifier; and
-6. reject duplicate credentials or nullifiers.
+2. derive the regular private account ID from the nullifier public key, ML-KEM
+   viewing public key, and identifier;
+3. validate the viewing key encoding and bind the complete identity;
+4. blind the account ID into the Quorum member commitment;
+5. verify its SHA-256 Merkle path;
+6. derive a proposal- and version-bound Quorum nullifier; and
+7. reject duplicate credentials or nullifiers.
 
 The gate independently re-derives tier policy and validates all account and
 state bindings. Circuit checks do not replace gate checks.

@@ -12,13 +12,13 @@ use lee_core::{
     account::{AccountWithMetadata, Nonce},
     encryption::ViewingPublicKey,
     program::{InstructionData, PdaSeed, ProgramId},
-    EncryptedAccountData, InputAccountIdentity, NullifierPublicKey, SharedSecretKey,
+    InputAccountIdentity,
 };
 use quorum_circuit::{
     evaluate, ActionData, MemberApprovalWitness, ThresholdJournal, ThresholdWitness,
 };
 use quorum_composer::{compose_private_approval, network::NetworkClient, PrivateApprovalRequest};
-use quorum_core::{merkle::MemberTree, nullifier::member_commitment};
+use quorum_core::{merkle::MemberTree, nullifier::member_commitment_for_credential};
 use quorum_gate_core::{
     decode_constitution, decode_proposal, vault_pda_seed, ProposalStatus, QuorumInstruction,
     TierPolicy,
@@ -67,6 +67,17 @@ fn credential_secret(key_seed: u8, member_index: u8) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+fn viewing_public_key(key_byte: u8) -> ViewingPublicKey {
+    ViewingPublicKey::from_seed(&[key_byte; 32], &[key_byte + 1; 32])
+}
+
+fn viewing_public_key_bytes(key_byte: u8) -> [u8; quorum_core::VIEWING_PUBLIC_KEY_LEN] {
+    viewing_public_key(key_byte)
+        .to_bytes()
+        .try_into()
+        .expect("official viewing public key length")
+}
+
 fn approval_witness(
     recipient: AccountId,
     key_seed: u8,
@@ -76,22 +87,38 @@ fn approval_witness(
         credential_secret(key_seed, 1),
         credential_secret(key_seed, 2),
     ];
-    let commitments = secrets.iter().map(member_commitment).collect::<Vec<_>>();
+    let viewing_public_keys = [
+        viewing_public_key_bytes(31),
+        viewing_public_key_bytes(41),
+        viewing_public_key_bytes(51),
+    ];
+    let commitments = secrets
+        .iter()
+        .zip(&viewing_public_keys)
+        .map(|(secret, viewing_public_key)| {
+            member_commitment_for_credential(secret, viewing_public_key, 0)
+        })
+        .collect::<Vec<_>>();
     let tree = MemberTree::new(&commitments);
-    let approval_for = |secret: [u8; 32]| {
-        let commitment = member_commitment(&secret);
-        let path = tree.proof_for(&commitment).expect("member path");
-        MemberApprovalWitness {
-            member_secret: secret,
-            account_identifier: 0,
-            leaf_index: path.leaf_index,
-            siblings: path.siblings,
-        }
-    };
+    let approval_for =
+        |secret: [u8; 32], viewing_public_key: [u8; quorum_core::VIEWING_PUBLIC_KEY_LEN]| {
+            let commitment = member_commitment_for_credential(&secret, &viewing_public_key, 0);
+            let path = tree.proof_for(&commitment).expect("member path");
+            MemberApprovalWitness {
+                member_secret: secret,
+                viewing_public_key,
+                account_identifier: 0,
+                leaf_index: path.leaf_index,
+                siblings: path.siblings,
+            }
+        };
     let witness = ThresholdWitness {
         member_root: tree.root(),
         required_threshold: 2,
-        approvals: vec![approval_for(secrets[0]), approval_for(secrets[1])],
+        approvals: vec![
+            approval_for(secrets[0], viewing_public_keys[0]),
+            approval_for(secrets[1], viewing_public_keys[1]),
+        ],
         action: ActionData::Transfer {
             recipient: *recipient.value(),
             amount: TRANSFER_AMOUNT,
@@ -103,7 +130,10 @@ fn approval_witness(
     };
     let credential_ids = secrets[..2]
         .iter()
-        .map(|secret| lez_compat::private_account_id(secret, 0))
+        .zip(&viewing_public_keys)
+        .map(|(secret, viewing_public_key)| {
+            lez_compat::private_account_id(secret, viewing_public_key, 0)
+        })
         .collect();
     (witness, credential_ids, [secrets[0], secrets[1]])
 }
@@ -131,15 +161,13 @@ fn prove_threshold(witness: &ThresholdWitness) -> Result<QuorumProof> {
 }
 
 fn private_init_identity(nsk: [u8; 32], key_byte: u8) -> InputAccountIdentity {
-    let npk = NullifierPublicKey::from(&nsk);
-    let vpk = ViewingPublicKey::from_seed(&[key_byte; 32], &[key_byte + 1; 32]);
-    let (ssk, epk) = SharedSecretKey::encapsulate(&vpk);
+    let vpk = viewing_public_key(key_byte);
     InputAccountIdentity::PrivateAuthorizedInit {
-        epk,
-        view_tag: EncryptedAccountData::compute_view_tag(&npk, &vpk),
-        ssk,
+        vpk,
+        random_seed: [key_byte + 2; 32],
         nsk,
         identifier: 0,
+        commitment_root: lee_core::DUMMY_COMMITMENT_HASH,
     }
 }
 
@@ -352,6 +380,7 @@ async fn submit_private_approval(
                 private_init_identity(credential_secrets[0], 31),
                 private_init_identity(credential_secrets[1], 41),
             ],
+            dummy_inputs: vec![],
             public_account_ids: vec![accounts.multisig.id, accounts.proposal.id],
             public_nonces: Vec::new(),
             public_signers: Vec::new(),

@@ -20,6 +20,7 @@ use quorum_gate_core::{
 use quorum_prover::{dev_mode_status, prove, DevModeStatus, QuorumProof};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Errors produced by the SDK.
@@ -54,6 +55,30 @@ pub enum SdkError {
     ProofProposalMismatch,
 }
 
+/// Derives the valid ML-KEM viewing public key paired with a member nullifier secret.
+///
+/// Domain-separated seeds keep fixture and CLI credentials reproducible without
+/// requiring ML-KEM key generation inside the threshold guest.
+#[must_use]
+pub fn viewing_public_key_for_secret(
+    secret: &[u8; 32],
+) -> [u8; quorum_core::VIEWING_PUBLIC_KEY_LEN] {
+    fn seed(secret: &[u8; 32], label: &[u8]) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"quorum/v1/viewing-key/");
+        hasher.update(label);
+        hasher.update(secret);
+        hasher.finalize().into()
+    }
+
+    let d = seed(secret, b"d");
+    let z = seed(secret, b"z");
+    let key = lee_core::encryption::ViewingPublicKey::from_seed(&d, &z);
+    let mut bytes = [0_u8; quorum_core::VIEWING_PUBLIC_KEY_LEN];
+    bytes.copy_from_slice(key.to_bytes());
+    bytes
+}
+
 /// A shielded member: identity secret + derived commitment.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Member {
@@ -70,13 +95,21 @@ impl Member {
     /// The member's identity commitment (safe to publish).
     #[must_use]
     pub fn commitment(&self) -> [u8; 32] {
-        member_commitment_for_credential(&self.secret, self.account_identifier)
+        member_commitment_for_credential(
+            &self.secret,
+            &viewing_public_key_for_secret(&self.secret),
+            self.account_identifier,
+        )
     }
 
-    /// LEZ v0.3 private account id controlled by this member.
+    /// LEZ v0.2.2 private account id controlled by this member.
     #[must_use]
     pub fn account_id(&self) -> [u8; 32] {
-        lez_compat::private_account_id(&self.secret, self.account_identifier)
+        lez_compat::private_account_id(
+            &self.secret,
+            &viewing_public_key_for_secret(&self.secret),
+            self.account_identifier,
+        )
     }
 }
 
@@ -155,6 +188,7 @@ impl MemberSet {
         .ok_or(SdkError::MemberNotInSet)?;
         Ok(MemberApprovalWitness {
             member_secret: member.secret,
+            viewing_public_key: viewing_public_key_for_secret(&member.secret),
             account_identifier: member.account_identifier,
             leaf_index: proof.leaf_index,
             siblings: proof.siblings,
@@ -175,12 +209,15 @@ pub fn approval_witness_for(
     _constitution_version: u32,
 ) -> Result<MemberApprovalWitness, SdkError> {
     let tree = MemberTree::new(commitments);
-    let commitment = member_commitment_for_credential(member_secret, account_identifier);
+    let viewing_public_key = viewing_public_key_for_secret(member_secret);
+    let commitment =
+        member_commitment_for_credential(member_secret, &viewing_public_key, account_identifier);
     let proof = tree
         .proof_for(&commitment)
         .ok_or(SdkError::MemberNotInSet)?;
     Ok(MemberApprovalWitness {
         member_secret: *member_secret,
+        viewing_public_key,
         account_identifier,
         leaf_index: proof.leaf_index,
         siblings: proof.siblings,
@@ -485,6 +522,28 @@ mod tests {
     }
 
     #[test]
+    fn viewing_key_and_account_id_are_deterministic_and_bound() {
+        let secret = [7_u8; 32];
+        let other_secret = [8_u8; 32];
+        let viewing_public_key = viewing_public_key_for_secret(&secret);
+        assert_eq!(viewing_public_key, viewing_public_key_for_secret(&secret));
+        assert_ne!(
+            viewing_public_key,
+            viewing_public_key_for_secret(&other_secret)
+        );
+
+        let member = Member {
+            index: 0,
+            secret,
+            account_identifier: 9,
+        };
+        assert_eq!(
+            member.account_id(),
+            lez_compat::private_account_id(&secret, &viewing_public_key, 9)
+        );
+    }
+
+    #[test]
     fn member_set_root_is_canonical_and_order_independent() {
         let a = MemberSet::from_secrets(&secrets(3));
         let b = MemberSet::from_secrets(&[secrets(3)[2], secrets(3)[0], secrets(3)[1]]);
@@ -561,7 +620,13 @@ mod tests {
             let mut all = secrets(3);
             all[2] = newcomer;
             all.iter()
-                .map(|secret| member_commitment_for_credential(secret, 0))
+                .map(|secret| {
+                    member_commitment_for_credential(
+                        secret,
+                        &viewing_public_key_for_secret(secret),
+                        0,
+                    )
+                })
                 .collect()
         };
         let new_root = MemberTree::new(&new_commitments).root();

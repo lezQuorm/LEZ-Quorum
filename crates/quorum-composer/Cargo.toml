@@ -18,13 +18,13 @@ network = [
 [dependencies]
 quorum-gate-core = { path = "../quorum-gate-core" }
 quorum-prover = { path = "../quorum-prover" }
-lee = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.0", package = "lee" }
-lee-core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.0", package = "lee_core", features = ["host"] }
+lee = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", package = "lee" }
+lee-core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", package = "lee_core", features = ["host"] }
 risc0-zkvm.workspace = true
 borsh = "1.5"
 thiserror.workspace = true
-common = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.0", optional = true }
-sequencer_service_rpc = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.0", features = ["client"], optional = true }
+common = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", optional = true }
+sequencer_service_rpc = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", features = ["client"], optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"], optional = true }
 
 [dev-dependencies]
@@ -37,8 +37,8 @@ anyhow = "1"
 bincode.workspace = true
 serde_json = "1"
 sha2.workspace = true
-token_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.0" }
-programs = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.0", features = ["artifacts"] }
+token_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2" }
+programs = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", features = ["artifacts"] }
 
 [lints]
 workspace = true

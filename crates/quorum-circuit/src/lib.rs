@@ -67,7 +67,10 @@ pub enum ActionData {
 pub struct MemberApprovalWitness {
     /// LEZ nullifier secret key (private; derives the account id and nullifier).
     pub member_secret: [u8; 32],
-    /// LEZ regular-private-account identifier used with the nullifier key.
+    /// LEZ ML-KEM viewing public key bound into the v0.2.2 private account ID.
+    #[serde(with = "serde_big_array::BigArray")]
+    pub viewing_public_key: [u8; quorum_core::VIEWING_PUBLIC_KEY_LEN],
+    /// LEZ regular-private-account identifier used with both privacy public keys.
     pub account_identifier: u128,
     /// Leaf position in the member Merkle tree.
     pub leaf_index: usize,
@@ -195,8 +198,11 @@ pub fn evaluate(witness: &ThresholdWitness) -> Result<ThresholdJournal, CircuitE
     let mut nullifiers = Vec::with_capacity(witness.approvals.len());
     let mut credential_commitments = Vec::with_capacity(witness.approvals.len());
     for approval in &witness.approvals {
-        let commitment =
-            member_commitment_for_credential(&approval.member_secret, approval.account_identifier);
+        let commitment = member_commitment_for_credential(
+            &approval.member_secret,
+            &approval.viewing_public_key,
+            approval.account_identifier,
+        );
         let mut result = leaf_hash(&commitment);
         let mut level_index = approval.leaf_index;
         for sibling in &approval.siblings {
@@ -217,6 +223,7 @@ pub fn evaluate(witness: &ThresholdWitness) -> Result<ThresholdJournal, CircuitE
         ));
         credential_commitments.push(credential_commitment_for_credential(
             &approval.member_secret,
+            &approval.viewing_public_key,
             approval.account_identifier,
             &witness.member_root,
             witness.proposal_id,
@@ -277,14 +284,25 @@ mod tests {
         let secrets = secrets(3);
         let commitments: Vec<Digest32> = secrets
             .iter()
-            .map(|secret| member_commitment_for_credential(secret, 0))
+            .map(|secret| {
+                member_commitment_for_credential(
+                    secret,
+                    &[0_u8; quorum_core::VIEWING_PUBLIC_KEY_LEN],
+                    0,
+                )
+            })
             .collect();
         let tree = MemberTree::new(&commitments);
         let approval_for = |secret: [u8; 32]| {
-            let commitment = member_commitment_for_credential(&secret, 0);
+            let commitment = member_commitment_for_credential(
+                &secret,
+                &[0_u8; quorum_core::VIEWING_PUBLIC_KEY_LEN],
+                0,
+            );
             let p = tree.proof_for(&commitment).expect("member proof");
             MemberApprovalWitness {
                 member_secret: secret,
+                viewing_public_key: [0_u8; quorum_core::VIEWING_PUBLIC_KEY_LEN],
                 account_identifier: 0,
                 leaf_index: p.leaf_index,
                 siblings: p.siblings,
@@ -363,6 +381,16 @@ mod tests {
     fn rejects_wrong_membership_path() {
         let mut witness = two_of_three_witness(500);
         witness.member_root[0] ^= 1;
+        assert_eq!(
+            evaluate(&witness).unwrap_err(),
+            CircuitError::InvalidMembership
+        );
+    }
+
+    #[test]
+    fn rejects_viewing_public_key_substitution() {
+        let mut witness = two_of_three_witness(500);
+        witness.approvals[0].viewing_public_key[0] ^= 1;
         assert_eq!(
             evaluate(&witness).unwrap_err(),
             CircuitError::InvalidMembership

@@ -49,10 +49,11 @@ The local proof and composition boundary is tested, including missing,
 wrong-image, malformed, and substituted inputs. A standalone sequencer
 lifecycle covers deployment, treasury initialization and funding, private
 approval, execution, confirmation, and final state reads. Native and portable
-Basecamp packages also build from the pinned Nix closure. Public testnet
-behavior, existing-account wallet scans, failure retries, production state
-reconciliation, and an independent circuit and program audit remain required
-before production use.
+Basecamp packages also build from the pinned Nix closure. The public v0.2.2 gate
+deployment verifies program acceptance, but a funded public lifecycle,
+existing-account wallet scans, failure retries, production state reconciliation,
+and an independent circuit and program audit remain required before production
+use.
 
 Quorum does not hide proposal contents, approval count, policy changes, or
 rotation timing. It cannot prevent approval withholding, loss of credentials,

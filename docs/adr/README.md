@@ -44,13 +44,30 @@ The SPEL guest verifies the pinned threshold image and journal with env::verify.
 Nested verification requires the host transaction executor to attach the
 threshold receipt as an assumption. `quorum-composer` performs this step and
 then attaches the gate receipt to the LEZ privacy circuit. A local standalone
-sequencer lifecycle is verified; public testnet evidence remains pending.
+sequencer lifecycle is verified in development and real-proof modes, and the
+gate is deployed to the public v0.2.2 testnet.
 
 ## ADR-0006: Isolate LEZ account compatibility
 
 **Status:** Implemented and locally verified.
 
-`lez-compat` models LEZ v0.3 private account IDs, commitments, nonce
-progression, owner stability, and Merkle proofs. Member commitments now bind an
-LEZ regular private account ID, and the outer privacy proof establishes control
-of that same credential.
+`lez-compat` models LEZ v0.2.2 private account IDs, ML-KEM viewing public keys,
+commitments, nonce progression, owner stability, and Merkle proofs. Member
+commitments bind the complete LEZ regular private-account identity, and the
+outer privacy proof establishes control of that same credential.
+
+## ADR-0007: Pin a temporary LEZ v0.2.2 SPEL compatibility revision
+
+**Status:** Accepted temporarily.
+
+The available upstream SPEL revision remained pinned to older LEZ transaction
+types and could not compose against the live v0.2.2 sequencer. Quorum therefore
+pins immutable commit `1fef85203c3130676a49aaed1b4387d16be9fe94` from the
+`FidelCoder/spel` compatibility branch. That revision advances SPEL's LEZ pins
+and lockfiles without changing its program API. Its complete 262-test workspace
+matrix and 40-test fixture suite pass, including five end-to-end tests.
+
+This is a compatibility bridge, not a permanent protocol fork. Replace it with
+an official upstream SPEL revision once upstream publishes v0.2.2 support, then
+regenerate the gate image and rerun the complete real-proof and network
+lifecycle before deployment.

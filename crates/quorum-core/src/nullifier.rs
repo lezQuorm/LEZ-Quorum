@@ -16,7 +16,7 @@
 //! ## Member commitments (shielded membership)
 //!
 //! ```text
-//! account_id = LEZ_PRIVATE_ACCOUNT_ID(member_secret, account_identifier)
+//! account_id = LEZ_PRIVATE_ACCOUNT_ID(member_secret, viewing_public_key, account_identifier)
 //! member_commitment = SHA256("quorum/v1/member" || account_id)
 //! ```
 //!
@@ -89,31 +89,34 @@ pub fn credential_commitment_from_account_id(
     h.finalize().into()
 }
 
-/// Derives a member commitment from a LEZ nullifier secret and account
-/// identifier.
+/// Derives a member commitment from LEZ nullifier and viewing credentials.
+/// The viewing public key is bound into the LEZ v0.2.2 private account ID.
 #[must_use]
 pub fn member_commitment_for_credential(
     member_secret: &[u8; 32],
+    viewing_public_key: &[u8; lez_compat::VIEWING_PUBLIC_KEY_LEN],
     account_identifier: u128,
 ) -> Commitment {
     member_commitment_from_account_id(&lez_compat::private_account_id(
         member_secret,
+        viewing_public_key,
         account_identifier,
     ))
 }
 
-/// Derives a proposal-scoped credential binding from the LEZ nullifier secret
-/// and account identifier proved by the threshold circuit.
+/// Derives a proposal-scoped credential binding from the complete LEZ v0.2.2
+/// private-account identity proved by the threshold circuit.
 #[must_use]
 pub fn credential_commitment_for_credential(
     member_secret: &[u8; 32],
+    viewing_public_key: &[u8; lez_compat::VIEWING_PUBLIC_KEY_LEN],
     account_identifier: u128,
     member_root: &[u8; 32],
     proposal_id: u64,
     constitution_version: u32,
 ) -> Commitment {
     credential_commitment_from_account_id(
-        &lez_compat::private_account_id(member_secret, account_identifier),
+        &lez_compat::private_account_id(member_secret, viewing_public_key, account_identifier),
         member_root,
         proposal_id,
         constitution_version,
@@ -123,7 +126,11 @@ pub fn credential_commitment_for_credential(
 /// Derives a member commitment for the default LEZ account identifier zero.
 #[must_use]
 pub fn member_commitment(member_secret: &[u8; 32]) -> Commitment {
-    member_commitment_for_credential(member_secret, 0)
+    member_commitment_for_credential(
+        member_secret,
+        &[0_u8; lez_compat::VIEWING_PUBLIC_KEY_LEN],
+        0,
+    )
 }
 
 #[cfg(test)]
@@ -177,26 +184,34 @@ mod tests {
     }
 
     #[test]
-    fn member_commitment_binds_lez_account_identifier() {
+    fn member_commitment_binds_lez_private_account_identity() {
         let secret = [9_u8; 32];
+        let vpk = [4_u8; lez_compat::VIEWING_PUBLIC_KEY_LEN];
         assert_ne!(
-            member_commitment_for_credential(&secret, 0),
-            member_commitment_for_credential(&secret, 1)
+            member_commitment_for_credential(&secret, &vpk, 0),
+            member_commitment_for_credential(&secret, &vpk, 1)
         );
-        let account_id = lez_compat::private_account_id(&secret, 7);
+        let other_vpk = [5_u8; lez_compat::VIEWING_PUBLIC_KEY_LEN];
+        assert_ne!(
+            member_commitment_for_credential(&secret, &vpk, 7),
+            member_commitment_for_credential(&secret, &other_vpk, 7)
+        );
+        let account_id = lez_compat::private_account_id(&secret, &vpk, 7);
         assert_eq!(
-            member_commitment_for_credential(&secret, 7),
+            member_commitment_for_credential(&secret, &vpk, 7),
             member_commitment_from_account_id(&account_id)
         );
     }
 
     #[test]
     fn credential_commitment_is_scoped_to_the_approval() {
-        let account_id = lez_compat::private_account_id(&[9_u8; 32], 7);
+        let secret = [9_u8; 32];
+        let vpk = [4_u8; lez_compat::VIEWING_PUBLIC_KEY_LEN];
+        let account_id = lez_compat::private_account_id(&secret, &vpk, 7);
         let binding = credential_commitment_from_account_id(&account_id, &[1_u8; 32], 3, 2);
         assert_eq!(
             binding,
-            credential_commitment_for_credential(&[9_u8; 32], 7, &[1_u8; 32], 3, 2)
+            credential_commitment_for_credential(&secret, &vpk, 7, &[1_u8; 32], 3, 2)
         );
         assert_ne!(
             binding,

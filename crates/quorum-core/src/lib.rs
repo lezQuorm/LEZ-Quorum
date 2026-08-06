@@ -24,6 +24,7 @@ pub mod proposal;
 
 pub use constitution::{Constitution, SpendingTier, MAX_MEMBERS, MAX_TIERS};
 pub use error::{QuorumError, Result};
+pub use lez_compat::VIEWING_PUBLIC_KEY_LEN;
 pub use nullifier::{derive_nullifier, member_commitment};
 pub use proposal::{Proposal, ProposalKind, ProposalStatus};
 

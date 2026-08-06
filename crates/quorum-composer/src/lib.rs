@@ -18,7 +18,8 @@ use lee::{
 use lee_core::{
     account::{AccountId, AccountWithMetadata, Nonce},
     program::{ChainedCall, InstructionData, ProgramId, ProgramOutput},
-    InputAccountIdentity, PrivacyPreservingCircuitInput, PrivacyPreservingCircuitOutput,
+    DummyInput, InputAccountIdentity, PrivacyPreservingCircuitInput,
+    PrivacyPreservingCircuitOutput,
 };
 use quorum_gate_core::{
     validate_credentials, OnChainThresholdJournal, QuorumInstruction, ThresholdClaim,
@@ -96,6 +97,8 @@ pub struct PrivateApprovalRequest {
     pub pre_states: Vec<AccountWithMetadata>,
     /// LEZ private/public identity witness for every pre-state.
     pub account_identities: Vec<InputAccountIdentity>,
+    /// Randomized inputs used to pad private-account count; empty disables padding.
+    pub dummy_inputs: Vec<DummyInput>,
     /// Public accounts included in the final private transaction message.
     pub public_account_ids: Vec<AccountId>,
     /// Current nonces for the public signer accounts.
@@ -180,15 +183,16 @@ pub fn compose_private_approval(
         request.pre_states,
         instruction_data,
         request.account_identities,
+        request.dummy_inputs,
         request.programs,
         prepared.receipt,
     )?;
-    let message = PrivateMessage::try_from_circuit_output(
-        request.public_account_ids,
-        request.public_nonces,
-        output,
-    )
-    .map_err(|error| ComposerError::PrivateMessage(error.to_string()))?;
+    let message = PrivateMessage::from_circuit_output(request.public_nonces, output);
+    if message.public_account_ids() != request.public_account_ids {
+        return Err(ComposerError::PrivateMessage(
+            "circuit public accounts do not match the requested accounts".to_owned(),
+        ));
+    }
     let signer_refs = request.public_signers.iter().collect::<Vec<_>>();
     let witness_set = WitnessSet::for_message(&message, lee_proof, &signer_refs);
     Ok(ComposedApproval {
@@ -202,6 +206,7 @@ fn execute_and_prove_private(
     pre_states: Vec<AccountWithMetadata>,
     instruction_data: InstructionData,
     account_identities: Vec<InputAccountIdentity>,
+    dummy_inputs: Vec<DummyInput>,
     programs: ProgramWithDependencies,
     threshold_receipt: Receipt,
 ) -> Result<(PrivacyPreservingCircuitOutput, LeeProof), ComposerError> {
@@ -256,6 +261,7 @@ fn execute_and_prove_private(
             program_outputs,
             account_identities,
             program_id: initial_program_id,
+            dummy_inputs,
         })
         .map_err(|error| ComposerError::ExecutorInput(error.to_string()))?;
     let privacy_env = privacy_env
@@ -436,12 +442,11 @@ mod tests {
         account::{Account, AccountId, AccountWithMetadata},
         encryption::ViewingPublicKey,
         program::ProgramOutput,
-        EncryptedAccountData, NullifierPublicKey, SharedSecretKey,
     };
     use quorum_circuit::{
         evaluate, ActionData, MemberApprovalWitness, ThresholdJournal, ThresholdWitness,
     };
-    use quorum_core::{merkle::MemberTree, nullifier::member_commitment};
+    use quorum_core::{merkle::MemberTree, nullifier::member_commitment_for_credential};
     use quorum_gate_core::{
         decode_proposal, encode_constitution, encode_proposal, ConstitutionState, ProposalState,
         TierPolicy,
@@ -451,25 +456,52 @@ mod tests {
     use quorum_threshold_methods::THRESHOLD_ELF;
     use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 
+    fn viewing_public_key(key_byte: u8) -> ViewingPublicKey {
+        ViewingPublicKey::from_seed(&[key_byte; 32], &[key_byte + 1; 32])
+    }
+
+    fn viewing_public_key_bytes(key_byte: u8) -> [u8; quorum_core::VIEWING_PUBLIC_KEY_LEN] {
+        viewing_public_key(key_byte)
+            .to_bytes()
+            .try_into()
+            .expect("official viewing public key length")
+    }
+
     fn threshold_witness() -> (ThresholdWitness, Vec<[u8; 32]>) {
         let secrets = [[1_u8; 32], [2_u8; 32], [3_u8; 32]];
-        let commitments = secrets.iter().map(member_commitment).collect::<Vec<_>>();
+        let viewing_public_keys = [
+            viewing_public_key_bytes(31),
+            viewing_public_key_bytes(41),
+            viewing_public_key_bytes(51),
+        ];
+        let commitments = secrets
+            .iter()
+            .zip(&viewing_public_keys)
+            .map(|(secret, viewing_public_key)| {
+                member_commitment_for_credential(secret, viewing_public_key, 0)
+            })
+            .collect::<Vec<_>>();
         let tree = MemberTree::new(&commitments);
-        let approval_for = |secret: [u8; 32]| {
-            let commitment = member_commitment(&secret);
-            let path = tree.proof_for(&commitment).expect("member path");
-            MemberApprovalWitness {
-                member_secret: secret,
-                account_identifier: 0,
-                leaf_index: path.leaf_index,
-                siblings: path.siblings,
-            }
-        };
+        let approval_for =
+            |secret: [u8; 32], viewing_public_key: [u8; quorum_core::VIEWING_PUBLIC_KEY_LEN]| {
+                let commitment = member_commitment_for_credential(&secret, &viewing_public_key, 0);
+                let path = tree.proof_for(&commitment).expect("member path");
+                MemberApprovalWitness {
+                    member_secret: secret,
+                    viewing_public_key,
+                    account_identifier: 0,
+                    leaf_index: path.leaf_index,
+                    siblings: path.siblings,
+                }
+            };
         (
             ThresholdWitness {
                 member_root: tree.root(),
                 required_threshold: 2,
-                approvals: vec![approval_for(secrets[0]), approval_for(secrets[1])],
+                approvals: vec![
+                    approval_for(secrets[0], viewing_public_keys[0]),
+                    approval_for(secrets[1], viewing_public_keys[1]),
+                ],
                 action: ActionData::Transfer {
                     recipient: [9_u8; 32],
                     amount: 500,
@@ -481,8 +513,11 @@ mod tests {
             },
             secrets
                 .iter()
+                .zip(&viewing_public_keys)
                 .take(2)
-                .map(|secret| lez_compat::private_account_id(secret, 0))
+                .map(|(secret, viewing_public_key)| {
+                    lez_compat::private_account_id(secret, viewing_public_key, 0)
+                })
                 .collect(),
         )
     }
@@ -573,15 +608,40 @@ mod tests {
     }
 
     fn private_init_identity(nsk: [u8; 32], key_byte: u8) -> InputAccountIdentity {
-        let npk = NullifierPublicKey::from(&nsk);
-        let vpk = ViewingPublicKey::from_seed(&[key_byte; 32], &[key_byte + 1; 32]);
-        let (ssk, epk) = SharedSecretKey::encapsulate(&vpk);
+        let vpk = viewing_public_key(key_byte);
         InputAccountIdentity::PrivateAuthorizedInit {
-            epk,
-            view_tag: EncryptedAccountData::compute_view_tag(&npk, &vpk),
-            ssk,
+            vpk,
+            random_seed: [key_byte + 2; 32],
             nsk,
             identifier: 0,
+            commitment_root: lee_core::DUMMY_COMMITMENT_HASH,
+        }
+    }
+
+    fn fixture_request(
+        witness: &ThresholdWitness,
+        credential_ids: &[[u8; 32]],
+    ) -> PrivateApprovalRequest {
+        let pre_states = gate_accounts(witness, credential_ids);
+        let public_account_ids = pre_states[..2]
+            .iter()
+            .map(|account| account.account_id)
+            .collect::<Vec<_>>();
+        let program = Program::new(Cow::Borrowed(QUORUM_GATE_ELF)).expect("gate program");
+        PrivateApprovalRequest {
+            programs: program.into(),
+            pre_states,
+            account_identities: vec![
+                InputAccountIdentity::Public,
+                InputAccountIdentity::Public,
+                private_init_identity([1_u8; 32], 31),
+                private_init_identity([2_u8; 32], 41),
+            ],
+            dummy_inputs: vec![],
+            public_account_ids,
+            public_nonces: Vec::new(),
+            public_signers: Vec::new(),
+            proposal_id: witness.proposal_id,
         }
     }
 
@@ -590,30 +650,8 @@ mod tests {
         credential_ids: &[[u8; 32]],
         proof: &QuorumProof,
     ) -> ComposedApproval {
-        let pre_states = gate_accounts(witness, credential_ids);
-        let public_account_ids = pre_states[..2]
-            .iter()
-            .map(|account| account.account_id)
-            .collect::<Vec<_>>();
-        let program = Program::new(Cow::Borrowed(QUORUM_GATE_ELF)).expect("gate program");
-        compose_private_approval(
-            PrivateApprovalRequest {
-                programs: program.into(),
-                pre_states,
-                account_identities: vec![
-                    InputAccountIdentity::Public,
-                    InputAccountIdentity::Public,
-                    private_init_identity([1_u8; 32], 31),
-                    private_init_identity([2_u8; 32], 41),
-                ],
-                public_account_ids,
-                public_nonces: Vec::new(),
-                public_signers: Vec::new(),
-                proposal_id: witness.proposal_id,
-            },
-            proof,
-        )
-        .expect("private approval transaction")
+        compose_private_approval(fixture_request(witness, credential_ids), proof)
+            .expect("private approval transaction")
     }
 
     #[test]
@@ -685,18 +723,31 @@ mod tests {
         let composed = compose_fixture(&witness, &credential_ids, &proof);
 
         let message = composed.transaction.message();
-        assert_eq!(message.public_account_ids.len(), 2);
-        assert_eq!(message.public_post_states.len(), 2);
-        assert_eq!(message.encrypted_private_post_states.len(), 2);
-        assert_eq!(message.new_commitments.len(), 2);
-        assert_eq!(message.new_nullifiers.len(), 2);
+        let public_account_ids = message.public_account_ids();
+        assert_eq!(public_account_ids.len(), 2);
+        assert_eq!(message.public_actions.len(), 2);
+        assert_eq!(message.private_actions.len(), 2);
+        assert_eq!(message.commitments().len(), 2);
+        assert_eq!(message.nullifiers().len(), 2);
         assert_eq!(composed.credential_account_ids, credential_ids);
         for credential_id in &credential_ids {
-            assert!(!message
-                .public_account_ids
+            assert!(!public_account_ids
                 .iter()
                 .any(|account_id| account_id.value() == credential_id));
         }
+    }
+
+    #[test]
+    fn rejects_requested_public_accounts_that_differ_from_circuit_actions() {
+        let (witness, credential_ids) = threshold_witness();
+        let proof = dev_proof(&witness);
+        let mut request = fixture_request(&witness, &credential_ids);
+        request.public_account_ids.reverse();
+
+        assert!(matches!(
+            compose_private_approval(request, &proof),
+            Err(ComposerError::PrivateMessage(_))
+        ));
     }
 
     #[test]
@@ -708,7 +759,7 @@ mod tests {
         let (witness, credential_ids) = threshold_witness();
         assert_eq!(proof.journal, evaluate(&witness).expect("fixture journal"));
         let composed = compose_fixture(&witness, &credential_ids, &proof);
-        assert_eq!(composed.transaction.message().new_commitments.len(), 2);
+        assert_eq!(composed.transaction.message().commitments().len(), 2);
     }
 
     #[test]

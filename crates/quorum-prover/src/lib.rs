@@ -200,6 +200,7 @@ mod tests {
                 .expect("member proof");
             MemberApprovalWitness {
                 member_secret: secret,
+                viewing_public_key: [0_u8; quorum_core::VIEWING_PUBLIC_KEY_LEN],
                 account_identifier: 0,
                 leaf_index: p.leaf_index,
                 siblings: p.siblings,

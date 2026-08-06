@@ -74,7 +74,7 @@ invalid vaults, and recipient substitution.
 5. prove private account authorization and post-state encryption; and
 6. build a signed `PrivacyPreservingTransaction`.
 
-Its optional `network` feature uses the pinned LEZ v0.2 sequencer RPC to submit
+Its optional `network` feature uses the pinned LEZ v0.2.2 sequencer RPC to submit
 once, confirm by transaction hash, and read public account state. Private
 credential reconciliation is a wallet scan of encrypted outputs and new
 commitments; private account IDs are not public state lookup keys.
@@ -99,4 +99,6 @@ Local tests execute the compiled threshold guest, gate guest, and LEZ privacy
 circuit together, including missing and malformed assumptions. A real
 non-development threshold receipt is also generated and host-verified. A
 complete local standalone sequencer lifecycle is also exercised by the
-`local_lez_e2e` example. Public testnet deployment is not yet recorded.
+`local_lez_e2e` example in both development and real-proof modes. The gate is
+also deployed to the public v0.2.2 testnet; a funded public treasury lifecycle
+is separate evidence.

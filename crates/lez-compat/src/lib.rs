@@ -1,18 +1,20 @@
-//! # lez-compat — LEZ v0.3 compatibility layer
+//! # lez-compat - LEZ v0.2.2 compatibility layer
 //!
-//! Mirrors the *current* Logos Execution Environment commitment and Merkle
-//! semantics (`/LEE/v0.3/`), plus the shielded-account validation rules that
-//! make a *private* multisig possible:
+//! Mirrors the Logos Execution Environment commitment and Merkle semantics used
+//! by LEZ v0.2.2. The upstream format retains `/LEE/v0.3/` domain strings;
+//! those identify the protocol format, not the LEZ software release. The crate
+//! also implements the shielded-account rules that make a private multisig
+//! possible:
 //!
 //! - Shielded accounts are never stored in plaintext: every update produces a
 //!   **commitment** binding `(account_id, program_owner, balance, nonce, data)`
-//!   under the LEZ v0.3 commitment prefix.
+//!   under the LEE v0.3 protocol commitment prefix used by LEZ v0.2.2.
 //! - Membership in a committed set is proven with a **Merkle proof** over
 //!   commitment leaves (`leaf = SHA256(commitment)`, `node = SHA256(l||r)`).
 //! - The **nonce** and **`program_owner`** constraints that break the public
 //!   multisig `PoC` are documented and enforced here (see [`rules`]).
 //!
-//! The commitment format is verified against the official LEZ v0.3 dummy
+//! The commitment format is verified against the official LEZ v0.2.2 dummy
 //! commitment constants, exactly as in `LEZ-TokenStudio/lez-compat`.
 
 use serde::{Deserialize, Serialize};
@@ -29,11 +31,14 @@ pub type NullifierSecretKey = [u8; 32];
 /// LEZ nullifier public key derived from a nullifier secret key.
 pub type NullifierPublicKey = [u8; 32];
 
-/// Official LEZ v0.3 commitment domain prefix.
+/// Byte length of an LEZ v0.2.2 ML-KEM-768 viewing public key.
+pub const VIEWING_PUBLIC_KEY_LEN: usize = 1184;
+
+/// Official LEE v0.3 commitment domain prefix used by LEZ v0.2.2.
 pub const COMMITMENT_PREFIX: &[u8; 32] =
     b"/LEE/v0.3/Commitment/\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 
-/// Official LEZ v0.3 regular-private-account identifier domain.
+/// Official LEE v0.3 private-account domain used by LEZ v0.2.2.
 pub const PRIVATE_ACCOUNT_ID_PREFIX: &[u8; 32] = b"/LEE/v0.3/AccountId/Private/\x00\x00\x00\x00";
 
 /// Commitment of the default (all-zero) LEZ account — official test vector.
@@ -167,7 +172,7 @@ pub fn sha256(data: &[u8]) -> Digest32 {
     Sha256::digest(data).into()
 }
 
-/// Derives the official LEZ v0.3 nullifier public key from its secret key.
+/// Derives the official LEZ v0.2.2 nullifier public key from its secret key.
 #[must_use]
 pub fn nullifier_public_key(secret: &NullifierSecretKey) -> NullifierPublicKey {
     const PREFIX: &[u8; 8] = b"LEE/keys";
@@ -178,16 +183,21 @@ pub fn nullifier_public_key(secret: &NullifierSecretKey) -> NullifierPublicKey {
     sha256(&bytes)
 }
 
-/// Derives an official LEZ v0.3 regular private account identifier.
+/// Derives an official LEZ v0.2.2 regular private account identifier.
 ///
-/// Possession of `secret` is the credential-control statement proved by the
-/// LEZ privacy circuit for an authorized private account update.
+/// The address binds both privacy public keys. Possession of `secret` is the
+/// credential-control statement proved for an authorized private account update.
 #[must_use]
-pub fn private_account_id(secret: &NullifierSecretKey, identifier: u128) -> Digest32 {
-    let mut bytes = [0_u8; 80];
+pub fn private_account_id(
+    secret: &NullifierSecretKey,
+    viewing_public_key: &[u8; VIEWING_PUBLIC_KEY_LEN],
+    identifier: u128,
+) -> Digest32 {
+    let mut bytes = [0_u8; 32 + 32 + VIEWING_PUBLIC_KEY_LEN + 16];
     bytes[..32].copy_from_slice(PRIVATE_ACCOUNT_ID_PREFIX);
     bytes[32..64].copy_from_slice(&nullifier_public_key(secret));
-    bytes[64..].copy_from_slice(&identifier.to_le_bytes());
+    bytes[64..64 + VIEWING_PUBLIC_KEY_LEN].copy_from_slice(viewing_public_key);
+    bytes[64 + VIEWING_PUBLIC_KEY_LEN..].copy_from_slice(&identifier.to_le_bytes());
     sha256(&bytes)
 }
 
@@ -367,6 +377,13 @@ mod tests {
             57, 5, 64, 115, 153, 56, 184, 51, 207, 238, 99, 165, 147, 214, 213, 151, 30, 251, 30,
             196, 134, 22, 224, 211, 237, 120, 136, 225, 188, 220, 249, 28,
         ];
+        let upstream_viewing_key =
+            lee_core::encryption::ViewingPublicKey::from_seed(&[1_u8; 32], &[2_u8; 32]);
+        let upstream_nullifier_key = lee_core::NullifierPublicKey::from(&secret);
+        let viewing_public_key: &[u8; VIEWING_PUBLIC_KEY_LEN] = upstream_viewing_key
+            .to_bytes()
+            .try_into()
+            .expect("official viewing public key length");
         assert_eq!(
             nullifier_public_key(&secret),
             [
@@ -375,18 +392,36 @@ mod tests {
             ]
         );
         assert_eq!(
-            private_account_id(&secret, 0),
+            private_account_id(&secret, viewing_public_key, 0),
             [
-                165, 52, 40, 32, 231, 171, 113, 10, 65, 241, 156, 72, 154, 207, 122, 192, 15, 46,
-                50, 253, 105, 164, 89, 84, 40, 191, 182, 119, 64, 255, 67, 142,
+                242, 239, 57, 244, 89, 109, 65, 201, 223, 100, 43, 87, 205, 83, 148, 161, 176, 22,
+                208, 220, 68, 135, 10, 171, 182, 80, 54, 74, 228, 244, 236, 7,
             ]
         );
         assert_eq!(
-            private_account_id(&secret, 1),
+            private_account_id(&secret, viewing_public_key, 0),
+            *lee_core::account::AccountId::for_regular_private_account(
+                &upstream_nullifier_key,
+                &upstream_viewing_key,
+                0,
+            )
+            .value()
+        );
+        assert_eq!(
+            private_account_id(&secret, viewing_public_key, 1),
             [
-                203, 201, 109, 245, 40, 54, 195, 12, 55, 33, 0, 86, 245, 65, 70, 156, 24, 249, 26,
-                95, 56, 247, 99, 121, 165, 182, 234, 255, 19, 127, 191, 72,
+                149, 125, 157, 109, 119, 81, 9, 163, 231, 181, 214, 43, 57, 113, 221, 72, 180, 149,
+                189, 170, 32, 181, 255, 231, 19, 92, 235, 59, 153, 185, 172, 206,
             ]
+        );
+        assert_eq!(
+            private_account_id(&secret, viewing_public_key, 1),
+            *lee_core::account::AccountId::for_regular_private_account(
+                &upstream_nullifier_key,
+                &upstream_viewing_key,
+                1,
+            )
+            .value()
         );
     }
 }
