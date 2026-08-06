@@ -56,9 +56,10 @@ The v0.2.2 gate is deployed on the public LEZ testnet.
 | Confirmed block | `693` on 2026-08-06 |
 
 The public network reset once during verification. Testnet state is therefore
-ephemeral, and the transaction should be rechecked before a live demonstration.
+ephemeral, and the transaction should be rechecked before relying on the
+published status.
 The deployment transaction contains no signer or fee payer in LEZ v0.2.2; a
-funded authority is needed for funded account demonstrations, not program
+funded authority is needed for funded account operations, not program
 deployment. The complete treasury lifecycle, including a real nested proof,
 has been verified against the official v0.2.2 standalone sequencer. Public
 full-lifecycle evidence is tracked separately in
@@ -73,7 +74,7 @@ cargo build -p quorum-cli
 RISC0_DEV_MODE=1 ./scripts/demo.sh
 ```
 
-The offline demo creates a 2-of-3 treasury, approves and executes a transfer,
+The sample workflow creates a 2-of-3 treasury, approves and executes a transfer,
 rotates the member set, proves an old credential is rejected, and activates the
 replacement credentials.
 
@@ -93,7 +94,8 @@ quorum approve-all --proposal 0 --members 0,1
 quorum execute --proposal 0
 ```
 
-Development mode creates mock receipts and must be disclosed in demonstrations.
+Development mode creates mock receipts and must not be treated as
+cryptographic evidence.
 Generate and host-verify a real succinct threshold receipt with:
 
 ```bash

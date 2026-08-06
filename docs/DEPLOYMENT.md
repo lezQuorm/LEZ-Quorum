@@ -37,8 +37,7 @@ git clone --branch v0.2.2 --depth 1 \
   ../logos-execution-zone-v022
 ```
 
-For a fast demonstration, start the sequencer in development-proof mode in
-terminal A:
+For a development-proof run, start the sequencer in terminal A:
 
 ```bash
 cd ../logos-execution-zone-v022
@@ -67,11 +66,11 @@ env -u RISC0_DEV_MODE cargo run -p quorum-composer --features network \
   --example local_lez_e2e -- http://127.0.0.1:3040 101
 ```
 
-A successful run ends with `RESULT=PASS`. Development mode is appropriate for
-a responsive video but must be disclosed on screen; real mode is the intended
-cryptographic evidence path and requires substantial free memory for the
+A successful run ends with `RESULT=PASS`. Development mode uses
+non-cryptographic receipts and is intended for functional testing. Real mode
+produces cryptographic receipts and requires substantial free memory for the
 nested threshold, gate, and privacy proofs. Both modes are exercised end to
-end. Recorded transaction hashes are maintained in
+end. Transaction hashes are maintained in
 [the verification evidence](evidence/README.md). The current real v0.2.2 run
 used seed `121` and completed in approximately 2 hours 19 minutes.
 
@@ -90,22 +89,6 @@ resolves Qt 6.9.2 Core, Network, QML, and Remote Objects. The portable package
 bundles its non-Qt external libraries. Visual execution still requires a
 running Basecamp host because `Logos.Controls`, `Logos.Theme`, and the module
 manager are host-provided.
-
-## Video demo sequence
-
-1. Show the sequencer starting on `127.0.0.1:3040`.
-2. Run `local_lez_e2e` with a fresh seed and keep the full terminal visible.
-3. Point out the printed gate, multisig, vault, and recipient IDs.
-4. Let the transaction hashes show deployment, initialization, funding,
-   proposal, private approval, and execution.
-5. Finish on the four final assertions: vault 500, recipient 250, executed
-   status, and `RESULT=PASS`.
-6. Run the read-only public `getTransaction` and `getAccountBalance` requests
-   below to show block 693 and balance 150. Do not unlock the wallet or show its
-   recovery phrase, password, configuration, or private keys on camera.
-7. For a UI segment, import the appropriate LGX into Basecamp, select the
-   absolute `target/release/quorum` path, choose a protected empty working
-   directory, then demonstrate create, propose, approve, execute, and state.
 
 ## Composer API
 
@@ -181,7 +164,8 @@ Piñata block:  691
 Balance read:  150
 ```
 
-A complete funded public Quorum lifecycle still requires these operator steps:
+A complete funded public Quorum lifecycle has not been published. Such a
+lifecycle includes:
 
 1. Initialize the constitution, treasury, token, and recipient accounts.
 2. Compose and submit propose, private approve, execute, rotate, and
@@ -250,9 +234,9 @@ quorum activate-rotation
 The bundle contains credentials and must be distributed through an approved
 secure channel.
 
-## Required lifecycle evidence
+## Public lifecycle evidence
 
-Before calling the full public lifecycle complete, capture:
+A complete public lifecycle claim requires:
 
 - deployed program ID and exact dependency revisions;
 - multisig, proposal, vault, and recipient account IDs;

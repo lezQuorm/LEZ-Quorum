@@ -15,7 +15,6 @@ desktop-host validation. Current protocol results target LEZ v0.2.2 commit
 | Public LEZ testnet gate deployment | Confirmed by sequencer RPC in block 693 on 2026-08-06 |
 | Public wallet initialization and funding | Confirmed in blocks 690 and 691; balance read as 150 |
 | Native and portable Basecamp LGX builds | Verified from the committed Nix lock |
-| Released Basecamp visual capture | Requires the operator's desktop Basecamp session |
 
 ## Public testnet
 
@@ -36,8 +35,8 @@ of this update. The testnet reset once during earlier verification, so this
 state is explicitly ephemeral. The explorer indexer did not yet return block
 693 or the deployment transaction, despite the canonical sequencer response.
 
-The official v0.2.2 wallet health check passed. Its public demonstration
-account was initialized and funded through the Piñata proof-of-work claim:
+The official v0.2.2 wallet health check passed. Its public test account was
+initialized and funded through the Piñata proof-of-work claim:
 
 ```text
 account=Public/81yCTY7Sk9h1yjzj5Du4urxxAF5ysLnmnBvtDYaEsUxh
@@ -75,8 +74,8 @@ recipient=Public/6Jvk2EhMBdUsjx6qS4qSox19t4nzqk3gCycG8c6FRsVG
 | Private approval | `fe8d64d45f183d50995c2f195e9494283ad4ee4a79e9902187cdea9dba40cdfa` |
 | Execute | `9d7491c312a812c2c3e2ceba0c3b1882ab739ae4aaee067c4e1bc2c0ba982bb6` |
 
-Development mode is suitable for a responsive demonstration but does not
-produce cryptographic receipts and must be disclosed on screen.
+Development mode validates the transaction lifecycle but does not produce
+cryptographic receipts.
 
 ## Local real-proof lifecycle
 
@@ -127,4 +126,4 @@ Remote Objects; the portable archive bundles non-Qt external libraries.
 The module-builder standalone preview started headlessly with the application,
 capability host, and Quorum `ui-host` processes alive and no plugin or QML load
 error. The official Basecamp 0.2.1 AppImage also started offscreen and loaded
-the core modules. Visual interaction and recording remain a desktop step.
+the core modules. Interactive validation requires a desktop Basecamp host.

@@ -61,8 +61,7 @@ The native plugin closure resolves all linked libraries, and Qt `qmlformat`
 parses the packaged view successfully.
 The module-builder standalone preview also starts headlessly with the app,
 capability host, and Quorum `ui-host` processes running without a plugin or QML
-load error. A desktop Basecamp session is still required for visual interaction
-and capture.
+load error. Interactive execution requires a desktop Basecamp host.
 
 ## Runtime boundary
 

@@ -43,7 +43,7 @@ and refuses proposal or credential substitution.
 - Network timing and metadata exposure are acceptable for the deployment's
   threat model.
 
-## Remaining assurance work
+## Production readiness
 
 The local proof and composition boundary is tested, including missing,
 wrong-image, malformed, and substituted inputs. A standalone sequencer

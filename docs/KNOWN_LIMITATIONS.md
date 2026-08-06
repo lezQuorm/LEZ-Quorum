@@ -28,9 +28,9 @@ The Basecamp native and portable LGX packages build successfully with the
 pinned Nix, CMake, Ninja, Qt 6.9.2, Qt QML, and Qt Remote Objects closure. The
 plugins resolve their native dependencies and the QML parses with the pinned
 Qt tooling. The module-builder standalone host starts the Quorum UI plugin
-headlessly without a load error. Installation, visual interaction, and capture
-inside the released Basecamp desktop still require a GUI session; live wallet
-and composer operations require a supported Basecamp/LEZ wallet binding.
+headlessly without a load error. Interactive execution inside the released
+Basecamp desktop requires a GUI session; live wallet and composer operations
+require a supported Basecamp/LEZ wallet binding.
 
 ## Key operations
 
