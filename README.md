@@ -75,8 +75,7 @@ cd apps/basecamp-quorum
 nix build .#generate .#lib .#lgx .#lgx-portable
 ```
 
-The build produces native and portable LGX packages. Runtime details are in
-[the module README](apps/basecamp-quorum/README.md).
+The build produces native and portable LGX packages.
 
 ## Workspace
 
