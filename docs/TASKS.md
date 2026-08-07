@@ -17,12 +17,14 @@ Updated 2026-08-07.
 - [x] Publish public IDs, transaction hashes, blocks, and balances in
   `DEPLOYMENT.md`.
 
-## Remaining
+## Demo Delivery
 
 - [ ] Record the demo using the public testnet state.
 - [ ] Review the recording for exposed secrets before publishing it.
 - [ ] Add the final video URL to PR #120.
-- [ ] Obtain an independent security audit before production use.
+
+All engineering and testnet-readiness work is complete. An independent
+security audit is scheduled before production use and does not block the demo.
 
 Never show `.quorum-testnet/`, recovery phrases, passwords, member secrets,
 Merkle paths, claims, or private account material.

@@ -15,6 +15,12 @@ The sequencer's direct transaction index no longer returns the old deployment.
 Quorum verifies the exact transaction from retained block `693` and matches its
 bytecode before accepting it.
 
+The explorer uses a separate index. At final verification the live sequencer
+was at block `1225`, while the explorer stopped at `1158`. It displays the
+deployment and first approval, but reports `Transaction not found` for the
+second approval at `1163` and execution at `1165`. This is explorer lag; live
+account state and RPC reconciliation confirm the completed lifecycle.
+
 ## Public Accounts
 
 | Account | ID |
