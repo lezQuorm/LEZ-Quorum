@@ -16,6 +16,8 @@
 /member-*.json
 /rotation.json
 /claims/
+/.quorum-network-local/
+/.quorum-testnet/
 
 # Testnet evidence scratch
 /evidence/tmp/

@@ -17,6 +17,7 @@ constexpr char kBinaryKey[] = "quorumBinary";
 constexpr char kWorkingDirectoryKey[] = "workingDirectory";
 constexpr int kStartTimeoutMs = 10'000;
 constexpr int kOperationTimeoutMs = 30 * 60 * 1'000;
+constexpr int kProofTimeoutMs = 4 * 60 * 60 * 1'000;
 constexpr int kCancelGraceMs = 3'000;
 
 QString normalizedPath(const QString& value) {
@@ -40,8 +41,21 @@ bool isAllowedCommand(const QString& command) {
         QStringLiteral("info"),
         QStringLiteral("new-root"),
         QStringLiteral("activate-rotation"),
+        QStringLiteral("network"),
     };
     return allowed.contains(command);
+}
+
+bool isProofOperation(const QStringList& arguments) {
+    if (arguments.isEmpty()) {
+        return false;
+    }
+    if (arguments.first() == QStringLiteral("approve")
+        || arguments.first() == QStringLiteral("approve-all")) {
+        return true;
+    }
+    return arguments.first() == QStringLiteral("network")
+        && arguments.contains(QStringLiteral("approve"));
 }
 
 } // namespace
@@ -205,7 +219,7 @@ bool QuorumUiBackend::start(QString operation, QStringList arguments) {
         failToStart(QStringLiteral("start"), m_process->errorString());
         return false;
     }
-    m_timeout.start(kOperationTimeoutMs);
+    m_timeout.start(isProofOperation(arguments) ? kProofTimeoutMs : kOperationTimeoutMs);
     return true;
 }
 
@@ -253,7 +267,7 @@ void QuorumUiBackend::finish(int exitCode, QProcess::ExitStatus exitStatus) {
     QString failure;
     if (m_timedOut) {
         failure = QStringLiteral("timeout");
-        error = QStringLiteral("Quorum operation exceeded the 30-minute limit");
+        error = QStringLiteral("Quorum operation exceeded its time limit");
     } else if (m_cancelRequested) {
         failure = QStringLiteral("cancelled");
         error = QStringLiteral("Quorum operation was cancelled");

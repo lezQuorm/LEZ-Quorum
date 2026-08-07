@@ -15,12 +15,13 @@ independent security audit.
 | LEZ | `v0.2.2` at `d6e4ae694e7419f5906b340c232704466a1917b7` |
 | Gate program | `f84e14137c10cd3c7261f98d675ae7fcbe6cf8f8448ecd2f82dd8b7234ce98ec` |
 | Deployment transaction | `4635b013b5d3c1b2b4f3d50af938808be839727a90bd293de2ba799b83c24b43` |
-| Confirmed block | `693` on 2026-08-06 |
+| Deployment status | Prepared locally; the prior testnet record is no longer present |
+| RPC status | Healthy at block `845` on 2026-08-07 |
 
-The public deployment covers the gate program. The full funded treasury
-lifecycle has passed locally with real proofs but has not been broadcast to the
-public testnet. See [Deployment](docs/DEPLOYMENT.md) for live RPC checks and
-redeployment.
+The testnet has reset since the earlier block `693` deployment. The full
+treasury lifecycle has passed locally but has not been broadcast to public
+testnet. See [Deployment](docs/DEPLOYMENT.md) for current verification and
+operator commands.
 
 ## Protocol
 
@@ -67,6 +68,17 @@ RISC0_DEV_MODE=1 cargo run -p quorum-composer --features network \
 Success ends with vault balance `500`, recipient balance `250`, proposal status
 `Executed`, and `RESULT=PASS`. Unset `RISC0_DEV_MODE` for real proofs.
 
+The guarded operator workflow uses isolated state and two member approvals:
+
+```bash
+quorum network --target local prepare
+quorum network --target local status
+quorum network --target testnet health
+```
+
+Every network write is prepared and journaled first. Submission requires a
+second invocation with `--confirm-public-write`.
+
 ## Basecamp
 
 ```bash
@@ -75,7 +87,9 @@ cd apps/basecamp-quorum
 nix build .#generate .#lib .#lgx .#lgx-portable
 ```
 
-The build produces native and portable LGX packages.
+The module provides `Local` and `LEZ Testnet` modes. Testnet submission requires
+a single-use confirmation in the interface. The build produces native and
+portable LGX packages.
 
 ## Workspace
 
@@ -89,7 +103,7 @@ The build produces native and portable LGX packages.
 | `programs/quorum-gate` | SPEL guest and IDL |
 | `crates/quorum-composer` | Private LEZ transaction composition |
 | `crates/quorum-sdk` | Client API |
-| `crates/quorum-cli` | Local operator CLI |
+| `crates/quorum-cli` | Local and sequencer operator CLI |
 | `apps/basecamp-quorum` | Basecamp module |
 
 ## Development
@@ -111,7 +125,7 @@ cargo run -p quorum-gate-methods --example generate_idl
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Deployment](docs/DEPLOYMENT.md)
-- [Reference](docs/REFERENCE.md)
+- [Testnet readiness tasks](docs/TASKS.md)
 
 ## License
 

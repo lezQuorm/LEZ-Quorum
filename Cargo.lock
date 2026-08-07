@@ -2781,9 +2781,11 @@ dependencies = [
  "jsonrpsee-core",
  "jsonrpsee-http-client",
  "jsonrpsee-proc-macros",
+ "jsonrpsee-server",
  "jsonrpsee-types",
  "jsonrpsee-wasm-client",
  "jsonrpsee-ws-client",
+ "tokio",
  "tracing",
 ]
 
@@ -2826,7 +2828,9 @@ dependencies = [
  "http-body",
  "http-body-util",
  "jsonrpsee-types",
+ "parking_lot",
  "pin-project",
+ "rand 0.9.5",
  "rustc-hash",
  "serde",
  "serde_json",
@@ -2872,6 +2876,33 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "jsonrpsee-server"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c51b7c290bb68ce3af2d029648148403863b982f138484a73f02a9dd52dbd7f"
+dependencies = [
+ "futures-util",
+ "http 1.5.0",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "jsonrpsee-core",
+ "jsonrpsee-types",
+ "pin-project",
+ "route-recognizer",
+ "serde",
+ "serde_json",
+ "soketto",
+ "thiserror 2.0.19",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tower",
+ "tracing",
 ]
 
 [[package]]
@@ -5320,15 +5351,23 @@ name = "quorum-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "common",
  "hex",
+ "lee",
+ "lee_core",
  "quorum-circuit",
+ "quorum-composer",
  "quorum-core",
  "quorum-gate-core",
+ "quorum-gate-methods",
  "quorum-prover",
  "quorum-sdk",
+ "rand 0.8.7",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
+ "token_core",
+ "tokio",
 ]
 
 [[package]]
@@ -5339,6 +5378,7 @@ dependencies = [
  "bincode",
  "borsh",
  "common",
+ "jsonrpsee",
  "lee",
  "lee_core",
  "lez-compat",
@@ -5351,6 +5391,7 @@ dependencies = [
  "quorum-threshold-methods",
  "risc0-zkvm",
  "sequencer_service_rpc",
+ "serde",
  "serde_json",
  "sha2",
  "thiserror 2.0.19",
@@ -5923,6 +5964,12 @@ dependencies = [
  "paste",
  "stability",
 ]
+
+[[package]]
+name = "route-recognizer"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afab94fb28594581f62d981211a9a4d53cc8130bbcbbb89a0440d9b8e81a7746"
 
 [[package]]
 name = "rpds"
@@ -6611,6 +6658,7 @@ dependencies = [
  "base64",
  "bytes",
  "futures",
+ "http 1.5.0",
  "httparse",
  "log",
  "rand 0.8.7",

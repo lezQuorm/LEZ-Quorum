@@ -22,7 +22,7 @@ closes the proposal.
 | Multisig ID and version | Action and constitution version |
 | Threshold and member count | Required threshold |
 | Member root and spending tiers | Approval nullifiers |
-| Proposal counter | Active, Executed, or Cancelled status |
+| Proposal counter | Active or Executed status |
 
 The constitution stores the member root, never the member list. Rotation
 increments its version, making old credentials and proposals stale.
@@ -43,9 +43,9 @@ vault_seed = SHA256("quorum/vault/v1" || multisig_account_id)
 | `quorum-prover` | Threshold receipt generation and verification |
 | `quorum-gate-core` | Gate state and deterministic validation |
 | `quorum-gate` | SPEL program and generated IDL |
-| `quorum-composer` | Threshold, gate, and LEZ proof composition |
-| `quorum-sdk` / `quorum-cli` | Local workflow and state management |
-| `basecamp-quorum` | QML interface with an isolated CLI process |
+| `quorum-composer` | Typed lifecycle builders, proof composition, and RPC client |
+| `quorum-sdk` / `quorum-cli` | Local workflow, guarded submissions, and transaction journal |
+| `basecamp-quorum` | Local and testnet QML interface over an isolated CLI process |
 
 ## Privacy Boundary
 

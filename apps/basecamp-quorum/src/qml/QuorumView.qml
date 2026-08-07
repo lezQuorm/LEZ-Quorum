@@ -23,6 +23,12 @@ Rectangle {
                                              : (root.ready
                                                 ? Theme.palette.success
                                                 : Theme.palette.textMuted))
+    readonly property bool testnetMode: modeTabs.currentIndex === 1
+    readonly property string lastOutput: root.backend ? (root.backend.lastOutput || "") : ""
+    readonly property bool liveThresholdMet: root.outputNumber("approvals")
+                                                >= root.outputNumber("required_approvals")
+                                             && root.outputNumber("required_approvals") > 0
+                                             && root.outputValue("proposal_status") === "Active"
     property bool ready: false
 
     function isHex64(value) {
@@ -38,7 +44,21 @@ Rectangle {
             "new-root": "Generating member root",
             "rotate": "Opening rotation proposal",
             "activate-rotation": "Activating replacement keys",
-            "info": "Refreshing treasury state"
+            "info": "Refreshing treasury state",
+            "network-health": "Checking LEZ testnet",
+            "network-deployment": "Verifying gate deployment",
+            "network-prepare": "Preparing testnet state",
+            "network-deploy": "Deploying gate",
+            "network-initialize": "Initializing constitution",
+            "network-token": "Creating token",
+            "network-recipient": "Initializing recipient",
+            "network-vault": "Initializing vault",
+            "network-fund": "Funding vault",
+            "network-propose": "Opening testnet proposal",
+            "network-approve": "Generating private approval",
+            "network-execute": "Executing testnet proposal",
+            "network-status": "Reading testnet state",
+            "network-reconcile": "Reconciling transactions"
         }
         return names[value] || "Working"
     }
@@ -84,6 +104,37 @@ Rectangle {
             args,
             binaryField.text,
             workingDirectoryField.text)
+    }
+
+    function networkArguments(command, args, publicWrite) {
+        let values = ["network", "--target", "testnet"]
+        const rpc = rpcField.text.trim()
+        if (rpc.length > 0)
+            values = values.concat(["--rpc", rpc])
+        values.push(command)
+        values = values.concat(args || [])
+        if (publicWrite && publicWriteCheck.checked)
+            values.push("--confirm-public-write")
+        return values
+    }
+
+    function runNetwork(label, command, args, publicWrite) {
+        return root.run(label, root.networkArguments(command, args, publicWrite))
+    }
+
+    function outputValue(key) {
+        const lines = root.lastOutput.split("\n")
+        const prefix = key + "="
+        for (let index = lines.length - 1; index >= 0; --index) {
+            if (lines[index].indexOf(prefix) === 0)
+                return lines[index].slice(prefix.length).trim()
+        }
+        return ""
+    }
+
+    function outputNumber(key) {
+        const value = Number(root.outputValue(key))
+        return isNaN(value) ? 0 : value
     }
 
     component PrimaryButton: LogosButton {
@@ -138,6 +189,14 @@ Rectangle {
 
         function onQuorumBinaryChanged() { root.syncRuntimeFields() }
         function onWorkingDirectoryChanged() { root.syncRuntimeFields() }
+        function onOperationFinished(success, exitCode, output, error) {
+            publicWriteCheck.checked = false
+        }
+    }
+
+    onTestnetModeChanged: {
+        publicWriteCheck.checked = false
+        tabs.currentIndex = 0
     }
 
     Component.onCompleted: {
@@ -189,13 +248,32 @@ Rectangle {
                 }
 
                 LogosText {
+                    visible: root.width >= 560
                     text: "Private multisig treasury"
                     color: Theme.palette.textSecondary
                     font.pixelSize: Theme.typography.secondaryText
                 }
             }
 
+            LogosTabBar {
+                id: modeTabs
+
+                Layout.preferredWidth: root.width >= 760 ? 230 : 190
+                enabled: root.canRun
+
+                LogosTabButton {
+                    width: modeTabs.width / 2
+                    text: "Local"
+                }
+
+                LogosTabButton {
+                    width: modeTabs.width / 2
+                    text: "LEZ Testnet"
+                }
+            }
+
             RowLayout {
+                visible: root.width >= 760 || root.operationBusy
                 spacing: Theme.spacing.small
 
                 Rectangle {
@@ -267,7 +345,7 @@ Rectangle {
 
                 GridLayout {
                     Layout.fillWidth: true
-                    columns: width >= 760 ? 2 : 1
+                    columns: width >= 920 ? (root.testnetMode ? 3 : 2) : 1
                     columnSpacing: Theme.spacing.medium
                     rowSpacing: Theme.spacing.small
 
@@ -300,6 +378,43 @@ Rectangle {
                             textInput.selectByMouse: true
                         }
                     }
+
+                    ColumnLayout {
+                        visible: root.testnetMode
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        spacing: Theme.spacing.tiny
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            FieldLabel {
+                                Layout.fillWidth: true
+                                text: "Sequencer RPC"
+                            }
+
+                            CheckBox {
+                                id: customRpcCheck
+                                text: "Custom"
+                            }
+                        }
+
+                        LogosTextField {
+                            id: rpcField
+                            Layout.fillWidth: true
+                            text: "https://testnet.lez.logos.co"
+                            enabled: customRpcCheck.checked
+                            textInput.selectByMouse: true
+                        }
+                    }
+                }
+
+                CheckBox {
+                    id: publicWriteCheck
+
+                    visible: root.testnetMode
+                    enabled: root.canRun
+                    text: "Allow the next public testnet submission"
                 }
             }
         }
@@ -338,10 +453,19 @@ Rectangle {
                         Layout.topMargin: Theme.spacing.small
                         enabled: root.ready
 
-                        LogosTabButton { width: tabs.width / 5; text: "Create" }
-                        LogosTabButton { width: tabs.width / 5; text: "Propose" }
+                        LogosTabButton {
+                            width: tabs.width / 5
+                            text: root.testnetMode ? "Setup" : "Create"
+                        }
+                        LogosTabButton {
+                            width: tabs.width / 5
+                            text: root.testnetMode ? "Treasury" : "Propose"
+                        }
                         LogosTabButton { width: tabs.width / 5; text: "Approve" }
-                        LogosTabButton { width: tabs.width / 5; text: "Rotate" }
+                        LogosTabButton {
+                            width: tabs.width / 5
+                            text: root.testnetMode ? "Execute" : "Rotate"
+                        }
                         LogosTabButton { width: tabs.width / 5; text: "State" }
                     }
 
@@ -362,23 +486,43 @@ Rectangle {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.margins: Theme.spacing.xlarge
-                                spacing: Theme.spacing.xlarge
+                                spacing: root.testnetMode
+                                         ? Theme.spacing.medium
+                                         : Theme.spacing.xlarge
 
                                 ColumnLayout {
                                     spacing: Theme.spacing.tiny
 
                                     LogosText {
-                                        text: "Create multisig"
+                                        text: root.testnetMode ? "Testnet setup" : "Create multisig"
                                         color: Theme.palette.text
                                         font.pixelSize: Theme.typography.subtitleText
                                         font.weight: Theme.typography.weightMedium
                                     }
 
                                     LogosText {
-                                        text: "Define the approval policy and member set."
+                                        text: root.testnetMode
+                                              ? "LEZ v0.2.2 private treasury"
+                                              : "Define the approval policy and member set."
                                         color: Theme.palette.textSecondary
                                         font.pixelSize: Theme.typography.secondaryText
                                     }
+                                }
+
+                                RowLayout {
+                                    visible: root.testnetMode
+                                    spacing: Theme.spacing.small
+
+                                    LogosButton {
+                                        text: "Check RPC"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredWidth: 112
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-health", "health", [], false)
+                                    }
+
                                 }
 
                                 RowLayout {
@@ -420,16 +564,64 @@ Rectangle {
                                 }
 
                                 PrimaryButton {
-                                    text: "Create multisig"
+                                    text: root.testnetMode ? "Prepare state" : "Create multisig"
                                     enabled: root.canRun
-                                    onClicked: root.run(
-                                        "create",
-                                        ["create",
-                                         "--threshold", String(thresholdSpinner.value),
-                                         "--members", String(memberSpinner.value),
-                                         "--tiers", '[{"id":1,"threshold":'
-                                                    + String(thresholdSpinner.value)
-                                                    + ',"max_amount":1000}]'])
+                                    onClicked: {
+                                        if (root.testnetMode) {
+                                            root.runNetwork(
+                                                "network-prepare",
+                                                "prepare",
+                                                ["--threshold", String(thresholdSpinner.value),
+                                                 "--members", String(memberSpinner.value),
+                                                 "--funding", "750",
+                                                 "--transfer", "250"],
+                                                false)
+                                        } else {
+                                            root.run(
+                                                "create",
+                                                ["create",
+                                                 "--threshold", String(thresholdSpinner.value),
+                                                 "--members", String(memberSpinner.value),
+                                                 "--tiers", '[{"id":1,"threshold":'
+                                                            + String(thresholdSpinner.value)
+                                                            + ',"max_amount":1000}]'])
+                                        }
+                                    }
+                                }
+
+                                RowLayout {
+                                    visible: root.testnetMode
+                                    spacing: Theme.spacing.small
+
+                                    LogosButton {
+                                        text: "Verify gate"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredWidth: 112
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-deployment", "deployment", [], false)
+                                    }
+
+                                    LogosButton {
+                                        text: publicWriteCheck.checked ? "Submit gate" : "Prepare gate"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredWidth: 132
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-deploy", "deploy", [], true)
+                                    }
+
+                                    PrimaryButton {
+                                        text: publicWriteCheck.checked
+                                              ? "Submit constitution"
+                                              : "Prepare constitution"
+                                        enabled: root.canRun
+                                        implicitWidth: 188
+                                        onClicked: root.runNetwork(
+                                            "network-initialize", "initialize", [], true)
+                                    }
                                 }
                             }
                         }
@@ -440,26 +632,31 @@ Rectangle {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.margins: Theme.spacing.xlarge
-                                spacing: Theme.spacing.xlarge
+                                spacing: root.testnetMode
+                                         ? Theme.spacing.medium
+                                         : Theme.spacing.xlarge
 
                                 ColumnLayout {
                                     spacing: Theme.spacing.tiny
 
                                     LogosText {
-                                        text: "Propose transfer"
+                                        text: root.testnetMode ? "Treasury lifecycle" : "Propose transfer"
                                         color: Theme.palette.text
                                         font.pixelSize: Theme.typography.subtitleText
                                         font.weight: Theme.typography.weightMedium
                                     }
 
                                     LogosText {
-                                        text: "Open a treasury payment for member approval."
+                                        text: root.testnetMode
+                                              ? "Token, vault, funding, and proposal"
+                                              : "Open a treasury payment for member approval."
                                         color: Theme.palette.textSecondary
                                         font.pixelSize: Theme.typography.secondaryText
                                     }
                                 }
 
                                 ColumnLayout {
+                                    visible: !root.testnetMode
                                     Layout.fillWidth: true
                                     spacing: Theme.spacing.tiny
 
@@ -494,7 +691,8 @@ Rectangle {
                                             Layout.fillWidth: true
                                             from: 1
                                             to: 1_000_000
-                                            value: 500
+                                            value: root.testnetMode ? 250 : 500
+                                            enabled: !root.testnetMode
                                         }
                                     }
 
@@ -513,6 +711,7 @@ Rectangle {
                                 }
 
                                 PrimaryButton {
+                                    visible: !root.testnetMode
                                     text: "Propose transfer"
                                     enabled: root.canRun && root.isHex64(recipientField.text)
                                     onClicked: root.run(
@@ -522,6 +721,71 @@ Rectangle {
                                          "--recipient", recipientField.text.trim(),
                                          "--amount", String(amountSpinner.value),
                                          "--tier", String(tierSpinner.value)])
+                                }
+
+                                GridLayout {
+                                    id: treasuryActions
+                                    visible: root.testnetMode
+                                    Layout.fillWidth: true
+                                    columns: width >= 520 ? 2 : 1
+                                    columnSpacing: Theme.spacing.small
+                                    rowSpacing: Theme.spacing.small
+
+                                    LogosButton {
+                                        Layout.fillWidth: true
+                                        text: publicWriteCheck.checked ? "Submit token" : "Prepare token"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-token", "create-token", [], true)
+                                    }
+
+                                    LogosButton {
+                                        Layout.fillWidth: true
+                                        text: publicWriteCheck.checked
+                                              ? "Submit recipient"
+                                              : "Prepare recipient"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-recipient", "initialize-recipient", [], true)
+                                    }
+
+                                    LogosButton {
+                                        Layout.fillWidth: true
+                                        text: publicWriteCheck.checked ? "Submit vault" : "Prepare vault"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-vault", "initialize-vault", [], true)
+                                    }
+
+                                    LogosButton {
+                                        Layout.fillWidth: true
+                                        text: publicWriteCheck.checked ? "Submit funding" : "Prepare funding"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-fund", "fund", [], true)
+                                    }
+
+                                    PrimaryButton {
+                                        Layout.columnSpan: treasuryActions.columns
+                                        Layout.fillWidth: true
+                                        text: publicWriteCheck.checked
+                                              ? "Submit proposal"
+                                              : "Prepare proposal"
+                                        enabled: root.canRun
+                                        onClicked: root.runNetwork(
+                                            "network-propose",
+                                            "propose",
+                                            [],
+                                            true)
+                                    }
                                 }
                             }
                         }
@@ -538,14 +802,16 @@ Rectangle {
                                     spacing: Theme.spacing.tiny
 
                                     LogosText {
-                                        text: "Approve proposal"
+                                        text: root.testnetMode ? "Private approval" : "Approve proposal"
                                         color: Theme.palette.text
                                         font.pixelSize: Theme.typography.subtitleText
                                         font.weight: Theme.typography.weightMedium
                                     }
 
                                     LogosText {
-                                        text: "Create a private member approval proof or execute quorum."
+                                        text: root.testnetMode
+                                              ? "Real RISC Zero proof bound to live proposal state"
+                                              : "Create a private member approval proof or execute quorum."
                                         color: Theme.palette.textSecondary
                                         font.pixelSize: Theme.typography.secondaryText
                                     }
@@ -586,16 +852,32 @@ Rectangle {
                                     spacing: Theme.spacing.small
 
                                     PrimaryButton {
-                                        text: "Approve privately"
+                                        text: root.testnetMode
+                                              ? (publicWriteCheck.checked
+                                                 ? "Prove and submit"
+                                                 : "Generate proof")
+                                              : "Approve privately"
                                         enabled: root.canRun
-                                        onClicked: root.run(
-                                            "approve",
-                                            ["approve",
-                                             "--member", String(memberIdx.value),
-                                             "--proposal", String(proposalIdx.value)])
+                                        onClicked: {
+                                            if (root.testnetMode) {
+                                                root.runNetwork(
+                                                    "network-approve",
+                                                    "approve",
+                                                    ["--member", String(memberIdx.value),
+                                                     "--proposal", String(proposalIdx.value)],
+                                                    true)
+                                            } else {
+                                                root.run(
+                                                    "approve",
+                                                    ["approve",
+                                                     "--member", String(memberIdx.value),
+                                                     "--proposal", String(proposalIdx.value)])
+                                            }
+                                        }
                                     }
 
                                     LogosButton {
+                                        visible: !root.testnetMode
                                         text: "Execute"
                                         radius: Theme.spacing.radiusMedium
                                         enabled: root.canRun
@@ -605,12 +887,35 @@ Rectangle {
                                             "execute",
                                             ["execute", "--proposal", String(proposalIdx.value)])
                                     }
+
+                                    LogosButton {
+                                        visible: root.testnetMode
+                                        text: "Refresh"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredWidth: 100
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-status", "status", [], false)
+                                    }
+                                }
+
+                                LogosText {
+                                    visible: root.testnetMode
+                                    text: root.outputNumber("approvals") + " / "
+                                          + root.outputNumber("required_approvals")
+                                          + " confirmed approvals"
+                                    color: root.liveThresholdMet
+                                           ? Theme.palette.success
+                                           : Theme.palette.textSecondary
+                                    font.pixelSize: Theme.typography.secondaryText
                                 }
                             }
                         }
 
                         Item {
                             ColumnLayout {
+                                visible: !root.testnetMode
                                 anchors.top: parent.top
                                 anchors.left: parent.left
                                 anchors.right: parent.right
@@ -693,6 +998,117 @@ Rectangle {
                                         ["activate-rotation"])
                                 }
                             }
+
+                            ColumnLayout {
+                                visible: root.testnetMode
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: Theme.spacing.xlarge
+                                spacing: Theme.spacing.xlarge
+
+                                ColumnLayout {
+                                    spacing: Theme.spacing.tiny
+
+                                    LogosText {
+                                        text: "Execute proposal"
+                                        color: Theme.palette.text
+                                        font.pixelSize: Theme.typography.subtitleText
+                                        font.weight: Theme.typography.weightMedium
+                                    }
+
+                                    LogosText {
+                                        text: root.outputNumber("approvals") + " of "
+                                              + root.outputNumber("required_approvals")
+                                              + " approvals confirmed"
+                                        color: root.liveThresholdMet
+                                               ? Theme.palette.success
+                                               : Theme.palette.textSecondary
+                                        font.pixelSize: Theme.typography.secondaryText
+                                    }
+                                }
+
+                                RowLayout {
+                                    spacing: Theme.spacing.small
+
+                                    LogosButton {
+                                        text: "Refresh"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredWidth: 100
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-status", "status", [], false)
+                                    }
+
+                                    PrimaryButton {
+                                        text: publicWriteCheck.checked
+                                              ? "Submit execution"
+                                              : "Prepare execution"
+                                        enabled: root.canRun && root.liveThresholdMet
+                                        onClicked: root.runNetwork(
+                                            "network-execute",
+                                            "execute",
+                                            ["--proposal", String(proposalIdx.value)],
+                                            true)
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 1
+                                    color: Theme.palette.borderSecondary
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.spacing.tiny
+
+                                    FieldLabel { text: "Transaction label" }
+
+                                    LogosTextField {
+                                        id: reconcileLabel
+                                        Layout.fillWidth: true
+                                        placeholderText: "Optional for status query"
+                                        textInput.selectByMouse: true
+                                    }
+                                }
+
+                                RowLayout {
+                                    spacing: Theme.spacing.small
+
+                                    LogosButton {
+                                        text: "Reconcile"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                        Layout.preferredWidth: 112
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-reconcile",
+                                            "reconcile",
+                                            reconcileLabel.text.trim().length > 0
+                                                ? ["--label", reconcileLabel.text.trim()]
+                                                : [],
+                                            false)
+                                    }
+
+                                    LogosButton {
+                                        text: "Resubmit exact"
+                                        radius: Theme.spacing.radiusMedium
+                                        enabled: root.canRun
+                                                 && publicWriteCheck.checked
+                                                 && reconcileLabel.text.trim().length > 0
+                                        Layout.preferredWidth: 132
+                                        Layout.preferredHeight: 40
+                                        onClicked: root.runNetwork(
+                                            "network-reconcile",
+                                            "reconcile",
+                                            ["--label", reconcileLabel.text.trim(),
+                                             "--resubmit-unconfirmed"],
+                                            true)
+                                    }
+                                }
+                            }
                         }
 
                         Item {
@@ -707,14 +1123,16 @@ Rectangle {
                                     spacing: Theme.spacing.tiny
 
                                     LogosText {
-                                        text: "Treasury state"
+                                        text: root.testnetMode ? "Live testnet state" : "Treasury state"
                                         color: Theme.palette.text
                                         font.pixelSize: Theme.typography.subtitleText
                                         font.weight: Theme.typography.weightMedium
                                     }
 
                                     LogosText {
-                                        text: "Inspect balances, members, policy tiers, and proposals."
+                                        text: root.testnetMode
+                                              ? "Block, accounts, balances, approvals, and transaction journal"
+                                              : "Inspect balances, members, policy tiers, and proposals."
                                         color: Theme.palette.textSecondary
                                         font.pixelSize: Theme.typography.secondaryText
                                     }
@@ -723,7 +1141,14 @@ Rectangle {
                                 PrimaryButton {
                                     text: "Refresh state"
                                     enabled: root.canRun
-                                    onClicked: root.run("info", ["info"])
+                                    onClicked: {
+                                        if (root.testnetMode) {
+                                            root.runNetwork(
+                                                "network-status", "status", [], false)
+                                        } else {
+                                            root.run("info", ["info"])
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -760,6 +1185,19 @@ Rectangle {
                             font.weight: Theme.typography.weightMedium
                         }
 
+                        LogosButton {
+                            visible: root.activityText().length > 0
+                            text: "Copy"
+                            radius: Theme.spacing.radiusMedium
+                            Layout.preferredWidth: 64
+                            Layout.preferredHeight: 30
+                            onClicked: {
+                                activityArea.selectAll()
+                                activityArea.copy()
+                                activityArea.deselect()
+                            }
+                        }
+
                         LogosText {
                             visible: !!root.backend && !root.operationBusy
                                      && ((root.backend.lastOutput || "").length > 0
@@ -782,6 +1220,7 @@ Rectangle {
                         Layout.fillHeight: true
 
                         TextArea {
+                            id: activityArea
                             readOnly: true
                             selectByMouse: true
                             wrapMode: TextEdit.WrapAnywhere

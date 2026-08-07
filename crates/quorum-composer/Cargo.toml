@@ -10,35 +10,36 @@ rust-version.workspace = true
 [features]
 default = []
 network = [
-    "dep:common",
     "dep:sequencer_service_rpc",
     "dep:tokio",
 ]
 
 [dependencies]
 quorum-gate-core = { path = "../quorum-gate-core" }
+quorum-gate-methods = { path = "../../programs/quorum-gate" }
 quorum-prover = { path = "../quorum-prover" }
+quorum-circuit = { path = "../quorum-circuit" }
 lee = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", package = "lee" }
 lee-core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", package = "lee_core", features = ["host"] }
+common = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2" }
+programs = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", features = ["artifacts"] }
+token_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2" }
 risc0-zkvm.workspace = true
 borsh = "1.5"
+serde.workspace = true
 thiserror.workspace = true
-common = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", optional = true }
 sequencer_service_rpc = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", features = ["client"], optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"], optional = true }
 
 [dev-dependencies]
 lez-compat = { path = "../lez-compat" }
-quorum-circuit = { path = "../quorum-circuit" }
 quorum-core = { path = "../quorum-core" }
-quorum-gate-methods = { path = "../../programs/quorum-gate" }
 quorum-threshold-methods = { path = "../../guests/quorum-threshold" }
 anyhow = "1"
 bincode.workspace = true
 serde_json = "1"
 sha2.workspace = true
-token_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2" }
-programs = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", tag = "v0.2.2", features = ["artifacts"] }
+jsonrpsee = { version = "0.26", features = ["server"] }
 
 [lints]
 workspace = true

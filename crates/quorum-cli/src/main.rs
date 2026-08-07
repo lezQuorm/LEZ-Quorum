@@ -8,6 +8,8 @@ use quorum_gate_core::TierPolicy;
 use quorum_sdk::{Member, MemberSet, Multisig};
 use serde::{Deserialize, Serialize};
 
+mod network_workflow;
+
 const STATE_FILE: &str = "quorum.json";
 const MEMBER_FILE_PREFIX: &str = "member-";
 const CLAIMS_DIR: &str = "claims";
@@ -113,6 +115,17 @@ enum Command {
     },
     /// Activate rotation.json after its root becomes the active constitution root.
     ActivateRotation,
+    /// Operate against a local sequencer or the public LEZ testnet.
+    Network {
+        /// Network whose state and safety policy should be used.
+        #[arg(long, value_enum)]
+        target: network_workflow::NetworkTarget,
+        /// Sequencer RPC override.
+        #[arg(long)]
+        rpc: Option<String>,
+        #[command(subcommand)]
+        command: network_workflow::NetworkCommand,
+    },
 }
 
 fn main() {
@@ -153,6 +166,11 @@ fn run() -> Result<(), String> {
         Command::Info => info(),
         Command::NewRoot { members } => new_root(members),
         Command::ActivateRotation => activate_rotation(),
+        Command::Network {
+            target,
+            rpc,
+            command,
+        } => network_workflow::run(target, rpc, command),
     }
 }
 

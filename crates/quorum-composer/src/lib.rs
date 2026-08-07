@@ -28,6 +28,8 @@ use quorum_prover::{decode_receipt, verify_receipt, QuorumProof};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, Receipt};
 use thiserror::Error;
 
+pub mod lifecycle;
+
 const MAX_CHAINED_CALLS: usize = 10;
 
 /// Errors produced before or during private transaction composition.
@@ -77,6 +79,15 @@ pub enum ComposerError {
     /// Private transaction message construction failed.
     #[error("private transaction message: {0}")]
     PrivateMessage(String),
+    /// Lifecycle account key construction failed.
+    #[error("lifecycle account key: {0}")]
+    AccountKey(String),
+    /// Lifecycle instruction construction failed.
+    #[error("lifecycle instruction: {0}")]
+    LifecycleInstruction(String),
+    /// Embedded gate program construction failed.
+    #[error("gate program: {0}")]
+    GateProgram(String),
 }
 
 /// A locally verified approval ready for gate execution.
@@ -314,12 +325,27 @@ fn prove_program(
 /// RPC submission, confirmation, and state reconciliation.
 #[cfg(feature = "network")]
 pub mod network {
+    use std::collections::BTreeMap;
     use std::time::{Duration, Instant};
 
     use common::{transaction::LeeTransaction, HashType};
     use lee::{Account, AccountId, PrivacyPreservingTransaction};
+    use lee_core::{account::Nonce, program::ProgramId, BlockId};
+    use quorum_gate_core::{
+        decode_constitution, decode_proposal, ConstitutionState, ProposalState,
+    };
     use sequencer_service_rpc::{RpcClient as _, SequencerClient, SequencerClientBuilder};
     use thiserror::Error;
+    use token_core::TokenHolding;
+
+    /// A sequencer-confirmed transaction.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct Confirmation {
+        /// Deterministic transaction hash.
+        pub hash: HashType,
+        /// Block containing the transaction.
+        pub block: BlockId,
+    }
 
     /// Network client errors with retry-safe transaction hashes.
     #[derive(Debug, Error)]
@@ -339,6 +365,9 @@ pub mod network {
         /// State re-read failed.
         #[error("account state: {0}")]
         State(String),
+        /// A read-only RPC query failed.
+        #[error("RPC query: {0}")]
+        Query(String),
     }
 
     /// Thin client for the LEZ v0.2 sequencer JSON-RPC.
@@ -400,15 +429,50 @@ pub mod network {
             &self,
             transaction: LeeTransaction,
         ) -> Result<HashType, NetworkError> {
-            let hash = self
-                .client
+            self.submit_transaction_and_confirm_with_block(transaction)
+                .await
+                .map(|confirmation| confirmation.hash)
+        }
+
+        /// Submits any LEZ transaction and returns its hash and confirmation block.
+        ///
+        /// # Errors
+        /// Any `NetworkError` variant.
+        pub async fn submit_transaction_and_confirm_with_block(
+            &self,
+            transaction: LeeTransaction,
+        ) -> Result<Confirmation, NetworkError> {
+            let hash = self.submit_transaction(transaction).await?;
+            let block = self.wait_for_transaction(hash).await?;
+            Ok(Confirmation { hash, block })
+        }
+
+        /// Submits one transaction without polling.
+        ///
+        /// Callers that persist transaction journals should save the
+        /// transaction and its deterministic hash before invoking this method.
+        ///
+        /// # Errors
+        /// `NetworkError::Submit` when the sequencer rejects the request.
+        pub async fn submit_transaction(
+            &self,
+            transaction: LeeTransaction,
+        ) -> Result<HashType, NetworkError> {
+            self.client
                 .send_transaction(transaction)
                 .await
-                .map_err(|error| NetworkError::Submit(error.to_string()))?;
+                .map_err(|error| NetworkError::Submit(error.to_string()))
+        }
+
+        /// Polls an existing hash until it is confirmed and returns its block.
+        ///
+        /// # Errors
+        /// `NetworkError::ConfirmationTimeout` or `NetworkError::Confirmation`.
+        pub async fn wait_for_transaction(&self, hash: HashType) -> Result<BlockId, NetworkError> {
             let started = Instant::now();
             loop {
                 match self.client.get_transaction(hash).await {
-                    Ok(Some(_)) => return Ok(hash),
+                    Ok(Some((_, block_id))) => return Ok(block_id),
                     Ok(None) if started.elapsed() < self.confirmation_timeout => {
                         tokio::time::sleep(self.poll_interval).await;
                     }
@@ -420,6 +484,93 @@ pub mod network {
             }
         }
 
+        /// Checks sequencer health.
+        ///
+        /// # Errors
+        /// `NetworkError::Query` when the health RPC fails.
+        pub async fn check_health(&self) -> Result<(), NetworkError> {
+            self.client
+                .check_health()
+                .await
+                .map_err(|error| NetworkError::Query(error.to_string()))
+        }
+
+        /// Returns the latest sequencer block id.
+        ///
+        /// # Errors
+        /// `NetworkError::Query` when the RPC fails.
+        pub async fn get_last_block_id(&self) -> Result<BlockId, NetworkError> {
+            self.client
+                .get_last_block_id()
+                .await
+                .map_err(|error| NetworkError::Query(error.to_string()))
+        }
+
+        /// Reads a transaction and its confirmation block.
+        ///
+        /// # Errors
+        /// `NetworkError::Query` when the RPC fails.
+        pub async fn get_transaction(
+            &self,
+            hash: HashType,
+        ) -> Result<Option<(LeeTransaction, BlockId)>, NetworkError> {
+            self.client
+                .get_transaction(hash)
+                .await
+                .map_err(|error| NetworkError::Query(error.to_string()))
+        }
+
+        /// Reads current nonces for public signer accounts.
+        ///
+        /// # Errors
+        /// `NetworkError::Query` when the RPC fails.
+        pub async fn get_account_nonces(
+            &self,
+            account_ids: Vec<AccountId>,
+        ) -> Result<Vec<Nonce>, NetworkError> {
+            self.client
+                .get_accounts_nonces(account_ids)
+                .await
+                .map_err(|error| NetworkError::Query(error.to_string()))
+        }
+
+        /// Reads the native balance of a public account.
+        ///
+        /// # Errors
+        /// `NetworkError::Query` when the RPC fails.
+        pub async fn get_account_balance(
+            &self,
+            account_id: AccountId,
+        ) -> Result<u128, NetworkError> {
+            self.client
+                .get_account_balance(account_id)
+                .await
+                .map_err(|error| NetworkError::Query(error.to_string()))
+        }
+
+        /// Returns all named built-in program ids.
+        ///
+        /// # Errors
+        /// `NetworkError::Query` when the RPC fails.
+        pub async fn get_program_ids(&self) -> Result<BTreeMap<String, ProgramId>, NetworkError> {
+            self.client
+                .get_program_ids()
+                .await
+                .map_err(|error| NetworkError::Query(error.to_string()))
+        }
+
+        /// Returns the active sequencer channel id.
+        ///
+        /// # Errors
+        /// `NetworkError::Query` when the RPC fails.
+        pub async fn get_channel_id(&self) -> Result<String, NetworkError> {
+            self.client
+                .get_channel_id()
+                .await
+                .map(|channel_id| channel_id.to_string())
+                .map_err(|error| NetworkError::Query(error.to_string()))
+        }
+
         /// Re-reads an account after transaction confirmation.
         ///
         /// # Errors
@@ -429,6 +580,167 @@ pub mod network {
                 .get_account(account_id)
                 .await
                 .map_err(|error| NetworkError::State(error.to_string()))
+        }
+
+        /// Reads and decodes a Quorum constitution account.
+        ///
+        /// # Errors
+        /// `NetworkError::State` when the account cannot be fetched or decoded.
+        pub async fn get_constitution(
+            &self,
+            account_id: AccountId,
+        ) -> Result<ConstitutionState, NetworkError> {
+            let account = self.get_account(account_id).await?;
+            decode_constitution(&account.data)
+                .map_err(|error| NetworkError::State(error.to_string()))
+        }
+
+        /// Reads and decodes a Quorum proposal account.
+        ///
+        /// # Errors
+        /// `NetworkError::State` when the account cannot be fetched or decoded.
+        pub async fn get_proposal(
+            &self,
+            account_id: AccountId,
+        ) -> Result<ProposalState, NetworkError> {
+            let account = self.get_account(account_id).await?;
+            decode_proposal(&account.data).map_err(|error| NetworkError::State(error.to_string()))
+        }
+
+        /// Reads and decodes a token holding account.
+        ///
+        /// # Errors
+        /// `NetworkError::State` when the account cannot be fetched or decoded.
+        pub async fn get_token_holding(
+            &self,
+            account_id: AccountId,
+        ) -> Result<TokenHolding, NetworkError> {
+            let account = self.get_account(account_id).await?;
+            TokenHolding::try_from(&account.data)
+                .map_err(|error| NetworkError::State(error.to_string()))
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::sync::Arc;
+
+        use jsonrpsee::{server::ServerHandle, types::ErrorObjectOwned, RpcModule};
+
+        use super::*;
+        use crate::lifecycle;
+
+        #[derive(Clone)]
+        struct MockState {
+            transaction: LeeTransaction,
+            reject_submission: bool,
+            confirm: bool,
+        }
+
+        async fn mock_server(state: MockState) -> (String, ServerHandle) {
+            let server = jsonrpsee::server::Server::builder()
+                .build("127.0.0.1:0")
+                .await
+                .unwrap();
+            let address = server.local_addr().unwrap();
+            let mut module = RpcModule::new(Arc::new(state));
+            module
+                .register_method::<Result<HashType, ErrorObjectOwned>, _>(
+                    "sendTransaction",
+                    |params, state, _| {
+                        let submitted: LeeTransaction = params.one()?;
+                        if state.reject_submission {
+                            return Err(ErrorObjectOwned::owned(
+                                -32_000,
+                                "submission rejected",
+                                None::<()>,
+                            ));
+                        }
+                        if submitted != state.transaction {
+                            return Err(ErrorObjectOwned::owned(
+                                -32_001,
+                                "unexpected transaction",
+                                None::<()>,
+                            ));
+                        }
+                        Ok(submitted.hash())
+                    },
+                )
+                .unwrap();
+            module
+                .register_method::<Result<Option<(LeeTransaction, BlockId)>, ErrorObjectOwned>, _>(
+                    "getTransaction",
+                    |params, state, _| {
+                        let hash: HashType = params.one()?;
+                        if hash != state.transaction.hash() {
+                            return Err(ErrorObjectOwned::owned(
+                                -32_002,
+                                "unexpected hash",
+                                None::<()>,
+                            ));
+                        }
+                        Ok(state.confirm.then(|| (state.transaction.clone(), 41)))
+                    },
+                )
+                .unwrap();
+            let handle = server.start(module);
+            (format!("http://{address}"), handle)
+        }
+
+        #[tokio::test]
+        async fn submit_returns_typed_hash_and_block() {
+            let transaction = lifecycle::deploy_gate();
+            let (url, handle) = mock_server(MockState {
+                transaction: transaction.clone(),
+                reject_submission: false,
+                confirm: true,
+            })
+            .await;
+            let client = NetworkClient::connect(&url).unwrap();
+            let confirmation = client
+                .submit_transaction_and_confirm_with_block(transaction.clone())
+                .await
+                .unwrap();
+            assert_eq!(confirmation.hash, transaction.hash());
+            assert_eq!(confirmation.block, 41);
+            handle.stop().unwrap();
+        }
+
+        #[tokio::test]
+        async fn submission_rejection_is_not_reported_as_confirmation() {
+            let transaction = lifecycle::deploy_gate();
+            let (url, handle) = mock_server(MockState {
+                transaction: transaction.clone(),
+                reject_submission: true,
+                confirm: false,
+            })
+            .await;
+            let client = NetworkClient::connect(&url).unwrap();
+            assert!(matches!(
+                client.submit_transaction(transaction).await,
+                Err(NetworkError::Submit(_))
+            ));
+            handle.stop().unwrap();
+        }
+
+        #[tokio::test]
+        async fn confirmation_timeout_preserves_the_queryable_hash() {
+            let transaction = lifecycle::deploy_gate();
+            let hash = transaction.hash();
+            let (url, handle) = mock_server(MockState {
+                transaction: transaction.clone(),
+                reject_submission: false,
+                confirm: false,
+            })
+            .await;
+            let client = NetworkClient::connect(&url)
+                .unwrap()
+                .with_confirmation_policy(Duration::from_millis(1), Duration::from_millis(4));
+            assert!(matches!(
+                client.submit_transaction_and_confirm(transaction).await,
+                Err(NetworkError::ConfirmationTimeout(value)) if value == hash
+            ));
+            handle.stop().unwrap();
         }
     }
 }

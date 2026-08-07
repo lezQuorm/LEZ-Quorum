@@ -3,6 +3,7 @@
 //! These exercise the real `quorum` binary the same way `scripts/demo.sh` does:
 //! create → propose → aggregated approve-all → execute → rotate → activate keys.
 
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -276,4 +277,65 @@ fn rotation_bundle_cannot_activate_early() {
         error.contains("rotation bundle root is not the active constitution root"),
         "expected active-root check, got: {error}"
     );
+}
+
+#[test]
+fn network_state_is_private_isolated_and_not_overwritten() {
+    let dir = workdir("network-state");
+    let stdout = run_ok(&dir, &["network", "--target", "local", "prepare"]);
+    assert!(stdout.contains("network_state=prepared"));
+    assert!(!stdout.contains("secret"));
+
+    let network_dir = dir.join(".quorum-network-local");
+    let state_file = network_dir.join("state.json");
+    let secrets_file = network_dir.join("secrets.json");
+    let claims_dir = network_dir.join("claims");
+    assert_eq!(
+        std::fs::metadata(&network_dir)
+            .expect("network directory")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    assert_eq!(
+        std::fs::metadata(&claims_dir)
+            .expect("claims directory")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    for path in [state_file, secrets_file] {
+        assert_eq!(
+            std::fs::metadata(path)
+                .expect("private state file")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    let first = run_ok(&dir, &["network", "--target", "local", "deploy"]);
+    let second = run_ok(&dir, &["network", "--target", "local", "deploy"]);
+    let prepared_hash = |output: &str| {
+        output
+            .lines()
+            .find_map(|line| line.strip_prefix("transaction_hash="))
+            .expect("prepared transaction hash")
+            .to_owned()
+    };
+    assert_eq!(prepared_hash(&first), prepared_hash(&second));
+    assert!(first.contains("submission=blocked"));
+
+    let error = run_err(&dir, &["network", "--target", "local", "prepare"]);
+    assert!(error.contains("state already exists"));
+}
+
+#[test]
+fn public_testnet_rejects_development_proofs_before_rpc() {
+    let dir = workdir("testnet-dev-guard");
+    let error = run_err(&dir, &["network", "--target", "testnet", "health"]);
+    assert!(error.contains("RISC0_DEV_MODE must be 0 or unset"));
 }

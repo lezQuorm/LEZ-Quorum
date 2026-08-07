@@ -1,64 +1,34 @@
-use std::{borrow::Cow, time::Duration};
+use std::time::Duration;
 
 use anyhow::{ensure, Context as _, Result};
 use common::transaction::LeeTransaction;
-use lee::{
-    program::Program,
-    program_deployment_transaction::Message as DeploymentMessage,
-    public_transaction::{Message as PublicMessage, WitnessSet as PublicWitnessSet},
-    Account, AccountId, PrivateKey, ProgramDeploymentTransaction, PublicKey, PublicTransaction,
-};
+use lee::{Account, AccountId};
 use lee_core::{
     account::{AccountWithMetadata, Nonce},
     encryption::ViewingPublicKey,
-    program::{InstructionData, PdaSeed, ProgramId},
     InputAccountIdentity,
 };
 use quorum_circuit::{
     evaluate, ActionData, MemberApprovalWitness, ThresholdJournal, ThresholdWitness,
 };
-use quorum_composer::{compose_private_approval, network::NetworkClient, PrivateApprovalRequest};
-use quorum_core::{merkle::MemberTree, nullifier::member_commitment_for_credential};
-use quorum_gate_core::{
-    decode_constitution, decode_proposal, vault_pda_seed, ProposalStatus, QuorumInstruction,
-    TierPolicy,
+use quorum_composer::{
+    compose_private_approval,
+    lifecycle::{self, LifecycleAccounts, LifecycleSeeds},
+    network::NetworkClient,
+    PrivateApprovalRequest,
 };
-use quorum_gate_methods::{QUORUM_GATE_ELF, QUORUM_GATE_ID};
+use quorum_core::{merkle::MemberTree, nullifier::member_commitment_for_credential};
+use quorum_gate_core::{decode_constitution, decode_proposal, ProposalStatus, TierPolicy};
+use quorum_gate_methods::QUORUM_GATE_ID;
 use quorum_prover::QuorumProof;
 use quorum_threshold_methods::THRESHOLD_ELF;
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 use sha2::{Digest as _, Sha256};
-use token_core::{Instruction as TokenInstruction, TokenHolding};
+use token_core::TokenHolding;
 
 const TOTAL_SUPPLY: u128 = 1_000;
 const TREASURY_FUNDING: u128 = 750;
 const TRANSFER_AMOUNT: u64 = 250;
-
-struct PublicAccount {
-    key: PrivateKey,
-    id: AccountId,
-}
-
-impl PublicAccount {
-    fn from_byte(byte: u8) -> Result<Self> {
-        let key = PrivateKey::try_new([byte; 32]).context("invalid deterministic private key")?;
-        let id = AccountId::from(&PublicKey::new_from_private_key(&key));
-        Ok(Self { key, id })
-    }
-}
-
-fn public_transaction(
-    program_id: ProgramId,
-    account_ids: Vec<AccountId>,
-    nonces: Vec<Nonce>,
-    signers: &[&PrivateKey],
-    instruction_data: InstructionData,
-) -> LeeTransaction {
-    let message =
-        PublicMessage::new_preserialized(program_id, account_ids, nonces, instruction_data);
-    let witnesses = PublicWitnessSet::for_message(&message, signers);
-    LeeTransaction::Public(PublicTransaction::new(message, witnesses))
-}
 
 fn credential_secret(key_seed: u8, member_index: u8) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -180,44 +150,22 @@ async fn submit(client: &NetworkClient, label: &str, transaction: LeeTransaction
     Ok(())
 }
 
-struct LifecycleAccounts {
-    multisig: PublicAccount,
-    definition: PublicAccount,
-    supply: PublicAccount,
-    recipient: PublicAccount,
-    proposal: PublicAccount,
-    vault_id: AccountId,
+fn lifecycle_accounts(key_seed: u8) -> Result<LifecycleAccounts> {
+    LifecycleAccounts::from_seeds(&LifecycleSeeds {
+        multisig: [key_seed; 32],
+        definition: [key_seed + 1; 32],
+        supply: [key_seed + 2; 32],
+        recipient: [key_seed + 3; 32],
+        proposal: [key_seed + 4; 32],
+    })
+    .context("deterministic lifecycle accounts")
 }
 
-impl LifecycleAccounts {
-    fn from_seed(key_seed: u8) -> Result<Self> {
-        let multisig = PublicAccount::from_byte(key_seed)?;
-        let vault_id = AccountId::for_public_pda(
-            &QUORUM_GATE_ID,
-            &PdaSeed::new(vault_pda_seed(multisig.id.value())),
-        );
-        Ok(Self {
-            multisig,
-            definition: PublicAccount::from_byte(key_seed + 1)?,
-            supply: PublicAccount::from_byte(key_seed + 2)?,
-            recipient: PublicAccount::from_byte(key_seed + 3)?,
-            proposal: PublicAccount::from_byte(key_seed + 4)?,
-            vault_id,
-        })
-    }
-
-    fn print_ids(&self) {
-        println!("gate_program_id={QUORUM_GATE_ID:?}");
-        println!("multisig=Public/{}", self.multisig.id);
-        println!("vault=Public/{}", self.vault_id);
-        println!("recipient=Public/{}", self.recipient.id);
-    }
-}
-
-fn gate_program() -> Result<Program> {
-    let program = Program::new(Cow::Borrowed(QUORUM_GATE_ELF)).context("gate program")?;
-    ensure!(program.id() == QUORUM_GATE_ID, "embedded gate ID mismatch");
-    Ok(program)
+fn print_ids(accounts: &LifecycleAccounts) {
+    println!("gate_program_id={QUORUM_GATE_ID:?}");
+    println!("multisig=Public/{}", accounts.multisig.id);
+    println!("vault=Public/{}", accounts.vault_id);
+    println!("recipient=Public/{}", accounts.recipient.id);
 }
 
 async fn initialize_constitution(
@@ -225,35 +173,23 @@ async fn initialize_constitution(
     accounts: &LifecycleAccounts,
     witness: &ThresholdWitness,
 ) -> Result<()> {
-    submit(
-        client,
-        "deploy",
-        LeeTransaction::ProgramDeployment(ProgramDeploymentTransaction::new(
-            DeploymentMessage::new(QUORUM_GATE_ELF.to_vec()),
-        )),
-    )
-    .await?;
+    submit(client, "deploy", lifecycle::deploy_gate()).await?;
 
-    let instruction = Program::serialize_instruction(QuorumInstruction::Initialize {
-        threshold: 2,
-        member_count: 3,
-        member_root: witness.member_root,
-        tiers: vec![TierPolicy {
-            id: 1,
-            threshold: 2,
-            max_amount: 1_000,
-        }],
-    })?;
     submit(
         client,
         "initialize",
-        public_transaction(
-            QUORUM_GATE_ID,
-            vec![accounts.multisig.id],
-            vec![0_u128.into()],
-            &[&accounts.multisig.key],
-            instruction,
-        ),
+        lifecycle::initialize_constitution(
+            accounts,
+            Nonce(0),
+            2,
+            3,
+            witness.member_root,
+            vec![TierPolicy {
+                id: 1,
+                threshold: 2,
+                max_amount: 1_000,
+            }],
+        )?,
     )
     .await
 }
@@ -262,69 +198,37 @@ async fn initialize_token_accounts(
     client: &NetworkClient,
     accounts: &LifecycleAccounts,
 ) -> Result<()> {
-    let token_program_id = programs::token().id();
-    let create = Program::serialize_instruction(TokenInstruction::NewFungibleDefinition {
-        name: "QUORUM-DEMO".to_owned(),
-        total_supply: TOTAL_SUPPLY,
-    })?;
     submit(
         client,
         "create_token",
-        public_transaction(
-            token_program_id,
-            vec![accounts.definition.id, accounts.supply.id],
-            vec![0_u128.into(), 0_u128.into()],
-            &[&accounts.definition.key, &accounts.supply.key],
-            create,
-        ),
+        lifecycle::create_token(
+            accounts,
+            Nonce(0),
+            Nonce(0),
+            "QUORUM-DEMO".to_owned(),
+            TOTAL_SUPPLY,
+        )?,
     )
     .await?;
 
-    let recipient = Program::serialize_instruction(TokenInstruction::InitializeAccount)?;
     submit(
         client,
         "initialize_recipient",
-        public_transaction(
-            token_program_id,
-            vec![accounts.definition.id, accounts.recipient.id],
-            vec![0_u128.into()],
-            &[&accounts.recipient.key],
-            recipient,
-        ),
+        lifecycle::initialize_recipient(accounts, Nonce(0))?,
     )
     .await?;
 
-    let vault = Program::serialize_instruction(QuorumInstruction::InitializeVault)?;
     submit(
         client,
         "initialize_vault",
-        public_transaction(
-            QUORUM_GATE_ID,
-            vec![
-                accounts.multisig.id,
-                accounts.definition.id,
-                accounts.vault_id,
-            ],
-            vec![1_u128.into()],
-            &[&accounts.multisig.key],
-            vault,
-        ),
+        lifecycle::initialize_vault(accounts, Nonce(1))?,
     )
     .await?;
 
-    let funding = Program::serialize_instruction(TokenInstruction::Transfer {
-        amount_to_transfer: TREASURY_FUNDING,
-    })?;
     submit(
         client,
         "fund_vault",
-        public_transaction(
-            token_program_id,
-            vec![accounts.supply.id, accounts.vault_id],
-            vec![1_u128.into()],
-            &[&accounts.supply.key],
-            funding,
-        ),
+        lifecycle::fund_vault(accounts, Nonce(1), TREASURY_FUNDING)?,
     )
     .await
 }
@@ -334,19 +238,10 @@ async fn propose_transfer(
     accounts: &LifecycleAccounts,
     witness: &ThresholdWitness,
 ) -> Result<()> {
-    let instruction = Program::serialize_instruction(QuorumInstruction::Propose {
-        action: witness.action.clone(),
-    })?;
     submit(
         client,
         "propose",
-        public_transaction(
-            QUORUM_GATE_ID,
-            vec![accounts.multisig.id, accounts.proposal.id],
-            vec![0_u128.into()],
-            &[&accounts.proposal.key],
-            instruction,
-        ),
+        lifecycle::propose(accounts, Nonce(0), witness.action.clone())?,
     )
     .await
 }
@@ -372,7 +267,7 @@ async fn submit_private_approval(
     );
     let composed = compose_private_approval(
         PrivateApprovalRequest {
-            programs: gate_program()?.into(),
+            programs: lifecycle::gate_program()?.into(),
             pre_states,
             account_identities: vec![
                 InputAccountIdentity::Public,
@@ -401,25 +296,7 @@ async fn submit_private_approval(
 }
 
 async fn execute_and_verify(client: &NetworkClient, accounts: &LifecycleAccounts) -> Result<()> {
-    let instruction =
-        Program::serialize_instruction(QuorumInstruction::Execute { proposal_id: 0 })?;
-    submit(
-        client,
-        "execute",
-        public_transaction(
-            QUORUM_GATE_ID,
-            vec![
-                accounts.multisig.id,
-                accounts.proposal.id,
-                accounts.vault_id,
-                accounts.recipient.id,
-            ],
-            Vec::new(),
-            &[],
-            instruction,
-        ),
-    )
-    .await?;
+    submit(client, "execute", lifecycle::execute(accounts, 0)?).await?;
 
     let multisig = client.get_account(accounts.multisig.id).await?;
     let proposal = client.get_account(accounts.proposal.id).await?;
@@ -497,9 +374,9 @@ async fn main() -> Result<()> {
 
     let client = NetworkClient::connect(&rpc_url)?
         .with_confirmation_policy(Duration::from_secs(1), Duration::from_secs(90));
-    let accounts = LifecycleAccounts::from_seed(key_seed)?;
-    accounts.print_ids();
-    gate_program()?;
+    let accounts = lifecycle_accounts(key_seed)?;
+    print_ids(&accounts);
+    lifecycle::gate_program()?;
     let (witness, credential_ids, credential_secrets) =
         approval_witness(accounts.recipient.id, key_seed);
 
