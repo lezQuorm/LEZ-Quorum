@@ -1,0 +1,181 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1050" role="img"
+  aria-labelledby="title description">
+  <title id="title">LEZ-Quorum architecture flow</title>
+  <desc id="description">
+    Hand-drawn system sketch showing setup, private threshold approval, LEZ proof
+    composition, threshold enforcement, and one-shot execution.
+  </desc>
+
+  <defs>
+    <pattern id="paper-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.2" fill="#e8ecef"/>
+    </pattern>
+    <filter id="rough" x="-3%" y="-3%" width="106%" height="106%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="2"
+        seed="17" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.3"
+        xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <marker id="arrow-dark" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5"
+      markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+    </marker>
+    <style>
+      .title { font: 700 40px Inter, Arial, sans-serif; fill: #171a1c; }
+      .subtitle { font: 400 19px Inter, Arial, sans-serif; fill: #596168; }
+      .section { font: 700 17px Inter, Arial, sans-serif; letter-spacing: 2px; fill: #596168; }
+      .box-title { font: 700 19px Inter, Arial, sans-serif; fill: #171a1c; }
+      .box-copy { font: 400 15px Inter, Arial, sans-serif; fill: #424a50; }
+      .small { font: 600 13px Inter, Arial, sans-serif; fill: #596168; }
+      .mono { font: 600 14px "Liberation Mono", monospace; fill: #2f363b; }
+      .sketch-box { fill: #ffffff; stroke: #24292f; stroke-width: 2.4; rx: 7; }
+      .ghost { fill: none; stroke: #24292f; stroke-width: 1.2; opacity: 0.28; rx: 7; }
+      .teal { stroke: #0f766e; }
+      .amber { stroke: #b45309; }
+      .green { stroke: #2f7d4c; }
+      .flow { fill: none; stroke: #24292f; stroke-width: 2.3; marker-end: url(#arrow-dark); }
+      .flow-teal { fill: none; stroke: #0f766e; stroke-width: 2.5; marker-end: url(#arrow-teal); }
+      .dashed { stroke-dasharray: 8 7; }
+      .note { fill: #ffffff; stroke: #cbd2d8; stroke-width: 1.5; rx: 5; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1050" fill="#fbfcfd"/>
+  <rect width="1600" height="1050" fill="url(#paper-grid)"/>
+
+  <text x="72" y="70" class="section">LEZ-QUORUM / SYSTEM SKETCH</text>
+  <text x="72" y="120" class="title">Private approval. Public execution.</text>
+  <text x="72" y="154" class="subtitle">
+    Members prove authorization without exposing the member list or approval ownership.
+  </text>
+
+  <text x="72" y="218" class="section">1 / SET UP THE TREASURY</text>
+
+  <rect x="72" y="246" width="275" height="126" class="ghost" transform="translate(3 2)"
+    filter="url(#rough)"/>
+  <rect x="72" y="246" width="275" height="126" class="sketch-box teal"
+    filter="url(#rough)"/>
+  <text x="210" y="290" text-anchor="middle" class="box-title">Basecamp UI</text>
+  <text x="210" y="320" text-anchor="middle" class="box-copy">create / propose / approve</text>
+  <text x="210" y="345" text-anchor="middle" class="mono">QML + CLI process</text>
+
+  <path d="M 352 309 C 388 306, 408 312, 442 309" class="flow"/>
+
+  <rect x="450" y="246" width="275" height="126" class="ghost" transform="translate(3 2)"
+    filter="url(#rough)"/>
+  <rect x="450" y="246" width="275" height="126" class="sketch-box"
+    filter="url(#rough)"/>
+  <text x="588" y="290" text-anchor="middle" class="box-title">Quorum SDK</text>
+  <text x="588" y="320" text-anchor="middle" class="box-copy">members + proposals + proofs</text>
+  <text x="588" y="345" text-anchor="middle" class="mono">quorum-sdk</text>
+
+  <path d="M 730 309 C 762 312, 784 306, 817 309" class="flow"/>
+
+  <rect x="825" y="228" width="703" height="164" class="ghost" transform="translate(3 2)"
+    filter="url(#rough)"/>
+  <rect x="825" y="228" width="703" height="164" class="sketch-box amber"
+    filter="url(#rough)"/>
+  <text x="862" y="267" class="box-title">Public gate state</text>
+  <line x1="862" y1="284" x2="1490" y2="284" stroke="#d8dde1" stroke-width="1.5"/>
+  <text x="862" y="317" class="mono">Constitution</text>
+  <text x="862" y="344" class="box-copy">M / N  |  member root  |  version  |  spending tiers</text>
+  <text x="1220" y="317" class="mono">Proposal</text>
+  <text x="1220" y="344" class="box-copy">action  |  nullifiers  |  status</text>
+  <text x="862" y="372" class="small">The member list never enters public state.</text>
+
+  <text x="72" y="452" class="section">2 / PROVE A PRIVATE APPROVAL</text>
+  <rect x="56" y="474" width="1488" height="224" fill="none" stroke="#8bbcb7"
+    stroke-width="1.8" stroke-dasharray="9 8" rx="12" filter="url(#rough)"/>
+  <text x="76" y="501" class="small">PRIVATE PROOF LANE</text>
+
+  <rect x="78" y="526" width="224" height="128" class="sketch-box teal"
+    filter="url(#rough)"/>
+  <text x="190" y="565" text-anchor="middle" class="box-title">Member wallet</text>
+  <text x="190" y="594" text-anchor="middle" class="box-copy">credential secret</text>
+  <text x="190" y="619" text-anchor="middle" class="box-copy">+ Merkle path</text>
+
+  <path d="M 308 590 C 332 586, 343 593, 365 590" class="flow-teal"/>
+  <text x="336" y="570" text-anchor="middle" class="small">private</text>
+
+  <rect x="372" y="512" width="282" height="156" class="sketch-box"
+    filter="url(#rough)"/>
+  <text x="513" y="552" text-anchor="middle" class="box-title">Threshold guest</text>
+  <text x="513" y="581" text-anchor="middle" class="box-copy">prove membership</text>
+  <text x="513" y="606" text-anchor="middle" class="box-copy">derive proposal nullifier</text>
+  <text x="513" y="638" text-anchor="middle" class="mono">RISC Zero</text>
+
+  <path d="M 660 590 C 680 594, 694 586, 714 590" class="flow"/>
+  <text x="687" y="570" text-anchor="middle" class="small">receipt</text>
+
+  <rect x="720" y="526" width="228" height="128" class="sketch-box amber"
+    filter="url(#rough)"/>
+  <text x="834" y="565" text-anchor="middle" class="box-title">SPEL gate</text>
+  <text x="834" y="594" text-anchor="middle" class="box-copy">bind proposal</text>
+  <text x="834" y="619" text-anchor="middle" class="box-copy">record nullifier</text>
+
+  <path d="M 954 590 C 973 586, 988 594, 1007 590" class="flow"/>
+  <text x="980" y="570" text-anchor="middle" class="small">gate proof</text>
+
+  <rect x="1014" y="526" width="244" height="128" class="sketch-box teal"
+    filter="url(#rough)"/>
+  <text x="1136" y="565" text-anchor="middle" class="box-title">LEZ privacy</text>
+  <text x="1136" y="594" text-anchor="middle" class="box-copy">prove private account</text>
+  <text x="1136" y="619" text-anchor="middle" class="box-copy">state transition</text>
+
+  <path d="M 1264 590 C 1283 594, 1298 586, 1317 590" class="flow"/>
+  <text x="1290" y="570" text-anchor="middle" class="small">private tx</text>
+
+  <rect x="1324" y="526" width="194" height="128" class="sketch-box green"
+    filter="url(#rough)"/>
+  <text x="1421" y="565" text-anchor="middle" class="box-title">Sequencer</text>
+  <text x="1421" y="594" text-anchor="middle" class="box-copy">confirm</text>
+  <text x="1421" y="619" text-anchor="middle" class="box-copy">state update</text>
+
+  <text x="72" y="754" class="section">3 / REACH THRESHOLD, THEN EXECUTE ONCE</text>
+
+  <rect x="72" y="790" width="330" height="172" class="sketch-box amber"
+    filter="url(#rough)"/>
+  <text x="237" y="830" text-anchor="middle" class="box-title">Active proposal</text>
+  <text x="237" y="866" text-anchor="middle" class="mono">distinct approvals: k / M</text>
+  <text x="237" y="900" text-anchor="middle" class="box-copy">k &lt; M  ->  remain Active</text>
+  <text x="237" y="930" text-anchor="middle" class="box-copy">k = M  ->  execution unlocked</text>
+
+  <path d="M 409 876 C 445 870, 468 881, 502 876" class="flow"/>
+  <text x="454" y="854" text-anchor="middle" class="small">k = M</text>
+
+  <path d="M 594 792 L 682 876 L 594 960 L 506 876 Z" fill="#ffffff"
+    stroke="#24292f" stroke-width="2.5" filter="url(#rough)"/>
+  <text x="594" y="870" text-anchor="middle" class="box-title">EXECUTE</text>
+  <text x="594" y="897" text-anchor="middle" class="small">one-shot</text>
+
+  <path d="M 685 842 C 718 818, 735 813, 765 813" class="flow"/>
+  <path d="M 685 910 C 718 934, 735 938, 765 938" class="flow"/>
+
+  <rect x="772" y="778" width="354" height="92" class="sketch-box teal"
+    filter="url(#rough)"/>
+  <text x="949" y="814" text-anchor="middle" class="box-title">Transfer</text>
+  <text x="949" y="844" text-anchor="middle" class="box-copy">vault  ->  approved recipient</text>
+
+  <rect x="772" y="896" width="354" height="92" class="sketch-box amber"
+    filter="url(#rough)"/>
+  <text x="949" y="932" text-anchor="middle" class="box-title">Governance</text>
+  <text x="949" y="962" text-anchor="middle" class="box-copy">rotate members or change M</text>
+
+  <path d="M 1132 824 C 1172 825, 1184 850, 1218 866" class="flow"/>
+  <path d="M 1132 942 C 1172 941, 1184 916, 1218 900" class="flow"/>
+
+  <rect x="1226" y="816" width="302" height="142" class="sketch-box green"
+    filter="url(#rough)"/>
+  <text x="1377" y="862" text-anchor="middle" class="box-title">EXECUTED</text>
+  <text x="1377" y="894" text-anchor="middle" class="box-copy">action applied</text>
+  <text x="1377" y="922" text-anchor="middle" class="box-copy">proposal closed</text>
+
+  <rect x="1214" y="986" width="314" height="38" class="note"/>
+  <text x="1371" y="1011" text-anchor="middle" class="small">
+    Missing approvals never close the proposal.
+  </text>
+</svg>

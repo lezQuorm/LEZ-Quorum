@@ -3,107 +3,26 @@
 LEZ-Quorum is an M-of-N authorization layer for an LEZ treasury. Members stay
 private; proposals, approval nullifiers, and execution results are public.
 
-## Lifecycle
+## System Sketch
 
-```text
-+---------+     +-----------+     +---------------------+
-| Create  | --> | Propose   | --> | Collect approvals   |
-| M of N  |     | one action|     | distinct members    |
-+---------+     +-----------+     +----------+----------+
-                                             |
-                                      approvals >= M?
-                                             |
-                                             v
-                                  +----------+----------+
-                                  | Execute             |
-                                  | apply action once   |
-                                  +----------+----------+
-                                             |
-                                             v
-                                  +----------+----------+
-                                  | Executed            |
-                                  | proposal is closed  |
-                                  +---------------------+
-```
+![LEZ-Quorum system flow](assets/architecture-flow.svg)
 
-An approval does not execute a proposal. Execute succeeds only after the
-proposal has collected its required number of distinct approval nullifiers.
+The middle lane is the private approval path. `quorum-composer` attaches the
+threshold receipt to the gate proof, then attaches the gate receipt to the LEZ
+privacy proof.
 
-## Proof Flow
-
-```text
-[Member wallet]
-  private credential + Merkle path
-              |
-              v
-[RISC Zero threshold guest]
-  proves membership in the committed member root
-  emits a proposal-bound nullifier
-              |
-              | threshold receipt + public journal
-              v
-[Quorum SPEL gate]
-  binds the receipt to the constitution and proposal
-  updates proposal and credential state
-              |
-              | gate receipt
-              v
-[LEZ privacy circuit]
-  proves the private account state transition
-              |
-              | PrivacyPreservingTransaction
-              v
-[LEZ sequencer]
-  confirms state updates and chained calls
-```
-
-`quorum-composer` verifies and connects the three proof layers. The threshold
-receipt is an assumption of the gate proof; the gate receipt is an assumption
-of the LEZ privacy proof.
-
-## Execute Flow
-
-```text
-Execute(proposal)
-       |
-       +-- proposal exists? ---------------- no --> reject
-       |
-       +-- status is Active? --------------- no --> reject
-       |
-       +-- distinct approvals >= threshold? no --> keep Active
-       |
-       +-- Transfer --------> vault -> approved recipient
-       |
-       +-- RotateMembers ---> replace member root and member count
-       |
-       +-- ChangeThreshold -> replace M
-       |
-       +-- mark proposal Executed
-```
-
-A transfer emits a chained call from the program-derived vault to the approved
-recipient. Rotation and threshold changes update the constitution. Execution is
-one-shot.
+Approval records a distinct nullifier; it does not apply the proposal. Execute
+unlocks at M approvals, applies the transfer or governance change once, and
+closes the proposal.
 
 ## State
 
-```text
-Constitution
-  +-- multisig ID
-  +-- version
-  +-- threshold (M)
-  +-- member count (N)
-  +-- member root --------> commits to the private member set
-  +-- spending tiers
-  +-- proposal counter
-            |
-            +---- Proposal
-                    +-- action
-                    +-- constitution version
-                    +-- required threshold
-                    +-- approval nullifiers
-                    +-- Active | Executed | Cancelled
-```
+| Constitution | Proposal |
+|---|---|
+| Multisig ID and version | Action and constitution version |
+| Threshold and member count | Required threshold |
+| Member root and spending tiers | Approval nullifiers |
+| Proposal counter | Active, Executed, or Cancelled status |
 
 The constitution stores the member root, never the member list. Rotation
 increments its version, making old credentials and proposals stale.
