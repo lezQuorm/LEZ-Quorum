@@ -38,6 +38,14 @@ pub enum SdkError {
     /// The proposal does not exist.
     #[error("proposal {0} not found")]
     ProposalNotFound(u64),
+    /// The proposal is active but has not collected enough approvals.
+    #[error("proposal threshold not met: {approvals}/{required} approvals")]
+    ThresholdNotMet {
+        /// Number of distinct approvals already recorded.
+        approvals: usize,
+        /// Number of approvals required to execute.
+        required: usize,
+    },
     /// Member index out of range.
     #[error("member index {0} out of range")]
     MemberOutOfRange(usize),
@@ -437,7 +445,8 @@ impl Multisig {
     /// Applies a proposal's action once the threshold is met.
     ///
     /// # Errors
-    /// [`SdkError::Gate`] if the proposal is not active or below threshold.
+    /// [`SdkError::Gate`] if the proposal is not active, or
+    /// [`SdkError::ThresholdNotMet`] if it needs more approvals.
     pub fn execute(&mut self, proposal_id: u64) -> Result<(), SdkError> {
         let proposal = self
             .proposals
@@ -451,10 +460,13 @@ impl Multisig {
                 quorum_gate_core::GateError::ProposalNotActive,
             ));
         }
-        if !proposal.threshold_met() {
-            return Err(SdkError::Gate(
-                quorum_gate_core::GateError::ProposalNotActive,
-            ));
+        let approvals = proposal.nullifiers.len();
+        let required = usize::from(proposal.threshold);
+        if approvals < required {
+            return Err(SdkError::ThresholdNotMet {
+                approvals,
+                required,
+            });
         }
         apply_action(&mut self.constitution, proposal)?;
         proposal.status = ProposalStatus::Executed;
@@ -596,6 +608,39 @@ mod tests {
         assert_eq!(
             multisig.proposals[id as usize].status,
             ProposalStatus::Executed
+        );
+    }
+
+    #[test]
+    fn execute_reports_approval_count_before_threshold() {
+        let set = MemberSet::from_secrets(&secrets(3));
+        let mut multisig = Multisig::create(
+            2,
+            &set,
+            vec![TierPolicy {
+                id: 1,
+                threshold: 2,
+                max_amount: 1_000,
+            }],
+        )
+        .unwrap();
+        let id = multisig.propose(transfer()).unwrap();
+
+        let error = multisig.execute(id).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "proposal threshold not met: 0/2 approvals"
+        );
+        assert!(matches!(
+            error,
+            SdkError::ThresholdNotMet {
+                approvals: 0,
+                required: 2
+            }
+        ));
+        assert_eq!(
+            multisig.proposals[id as usize].status,
+            ProposalStatus::Active
         );
     }
 
