@@ -520,6 +520,32 @@ pub mod network {
                 .map_err(|error| NetworkError::Query(error.to_string()))
         }
 
+        /// Finds a transaction in a specific historical block.
+        ///
+        /// This supports recovery when a sequencer has pruned its transaction
+        /// lookup while retaining the block and live program state.
+        ///
+        /// # Errors
+        /// `NetworkError::Query` when the block RPC fails.
+        pub async fn get_transaction_in_block(
+            &self,
+            hash: HashType,
+            block_id: BlockId,
+        ) -> Result<Option<LeeTransaction>, NetworkError> {
+            let block = self
+                .client
+                .get_block(block_id)
+                .await
+                .map_err(|error| NetworkError::Query(error.to_string()))?;
+            Ok(block.and_then(|block| {
+                block
+                    .body
+                    .transactions
+                    .into_iter()
+                    .find(|transaction| transaction.hash() == hash)
+            }))
+        }
+
         /// Reads current nonces for public signer accounts.
         ///
         /// # Errors

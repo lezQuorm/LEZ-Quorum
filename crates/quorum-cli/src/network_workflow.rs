@@ -37,6 +37,7 @@ const LOCAL_RPC: &str = "http://127.0.0.1:3040";
 const TESTNET_RPC: &str = "https://testnet.lez.logos.co";
 const RECORDED_DEPLOYMENT: &str =
     "4635b013b5d3c1b2b4f3d50af938808be839727a90bd293de2ba799b83c24b43";
+const RECORDED_DEPLOYMENT_BLOCK: u64 = 693;
 const LEZ_VERSION: &str = "v0.2.2";
 const STATE_FILE: &str = "state.json";
 const SECRETS_FILE: &str = "secrets.json";
@@ -392,10 +393,8 @@ async fn health(rpc: &str) -> Result<(), String> {
 async fn deployment(target: NetworkTarget, rpc: &str, value: &str) -> Result<(), String> {
     let hash = parse_hash(value)?;
     let client = client(rpc)?;
-    let result = client
-        .get_transaction(hash)
-        .await
-        .map_err(|error| error.to_string())?
+    let result = find_transaction(&client, hash)
+        .await?
         .ok_or_else(|| format!("deployment transaction {hash} was not found"))?;
     let (transaction, block) = result;
     let expected = lifecycle::deploy_gate();
@@ -1041,11 +1040,7 @@ async fn reconcile(
             .cloned()
             .ok_or_else(|| format!("transaction {label} disappeared"))?;
         let hash = parse_hash(&record.hash)?;
-        if let Some((_, block)) = client
-            .get_transaction(hash)
-            .await
-            .map_err(|error| error.to_string())?
-        {
+        if let Some((_, block)) = find_transaction(&client, hash).await? {
             mark_confirmed(&mut state, &label, block)?;
             print_confirmation(&label, hash, block);
             continue;
@@ -1078,6 +1073,27 @@ async fn reconcile(
         }
     }
     save_state(target, &state)
+}
+
+async fn find_transaction(
+    client: &NetworkClient,
+    hash: HashType,
+) -> Result<Option<(LeeTransaction, u64)>, String> {
+    if let Some(transaction) = client
+        .get_transaction(hash)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(Some(transaction));
+    }
+    if hash.to_string() != RECORDED_DEPLOYMENT {
+        return Ok(None);
+    }
+    client
+        .get_transaction_in_block(hash, RECORDED_DEPLOYMENT_BLOCK)
+        .await
+        .map_err(|error| error.to_string())
+        .map(|transaction| transaction.map(|value| (value, RECORDED_DEPLOYMENT_BLOCK)))
 }
 
 async fn sync_constitution(target: NetworkTarget, rpc: &str) -> Result<(), String> {

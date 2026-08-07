@@ -15,12 +15,12 @@ independent security audit.
 | LEZ | `v0.2.2` at `d6e4ae694e7419f5906b340c232704466a1917b7` |
 | Gate program | `f84e14137c10cd3c7261f98d675ae7fcbe6cf8f8448ecd2f82dd8b7234ce98ec` |
 | Deployment transaction | `4635b013b5d3c1b2b4f3d50af938808be839727a90bd293de2ba799b83c24b43` |
-| Deployment status | Prepared locally; the prior testnet record is no longer present |
-| RPC status | Healthy at block `845` on 2026-08-07 |
+| Deployment status | Confirmed at block `693` |
+| Treasury status | Executed at block `1165` |
 
-The testnet has reset since the earlier block `693` deployment. The full
-treasury lifecycle has passed locally but has not been broadcast to public
-testnet. See [Deployment](docs/DEPLOYMENT.md) for current verification and
+The public 2-of-3 lifecycle completed with two real private approval proofs.
+The vault finished at `500`, the recipient at `250`, and the proposal at
+`Executed`. See [Deployment](docs/DEPLOYMENT.md) for public evidence and
 operator commands.
 
 ## Protocol
@@ -54,7 +54,7 @@ Development receipts are not cryptographic evidence.
 Start an LEZ v0.2.2 standalone sequencer:
 
 ```bash
-cd ../logos-execution-zone-v022
+cd ../../logos-execution-zone-v022
 RISC0_DEV_MODE=1 just run-sequencer-standalone
 ```
 
