@@ -1,118 +1,149 @@
 # Architecture
 
-Quorum separates threshold authorization, gate execution, and LEZ transaction
-privacy. The threshold proof establishes M-of-N approval. The SPEL gate applies
-treasury policy. The LEZ privacy circuit authorizes and updates the private
-credential accounts.
+LEZ-Quorum is an M-of-N authorization layer for an LEZ treasury. Members stay
+private; proposals, approval nullifiers, and execution results are public.
 
-## Components
-
-| Component | Role |
-|---|---|
-| `quorum-core` | Member commitments, Merkle proofs, nullifiers, proposals, and policy |
-| `lez-compat` | LEZ v0.2.2 private account IDs, commitments, and account rules |
-| `quorum-circuit` | Pure threshold statement shared by host and guest |
-| `quorum-prover` | Receipt generation, encoding, and image verification |
-| `quorum-gate-core` | Serializable gate state and deterministic validation |
-| `quorum-gate` | SPEL program and generated IDL |
-| `quorum-composer` | Threshold, gate, and LEZ privacy receipt composition |
-| `quorum-sdk` / `quorum-cli` | Local member, proposal, rotation, and proof workflows |
-| `basecamp-quorum` | QML interface and process-isolated CLI backend |
+## Lifecycle
 
 ```text
-private credential + Merkle path
-              |
-              v
-      threshold Risc0 guest
-              |
-       receipt + journal
-              |
-              v
-          SPEL gate
-              |
-          gate receipt
-              |
-              v
-      LEZ privacy circuit
-              |
-              v
-   privacy-preserving transaction
++---------+     +-----------+     +---------------------+
+| Create  | --> | Propose   | --> | Collect approvals   |
+| M of N  |     | one action|     | distinct members    |
++---------+     +-----------+     +----------+----------+
+                                             |
+                                      approvals >= M?
+                                             |
+                                             v
+                                  +----------+----------+
+                                  | Execute             |
+                                  | apply action once   |
+                                  +----------+----------+
+                                             |
+                                             v
+                                  +----------+----------+
+                                  | Executed            |
+                                  | proposal is closed  |
+                                  +---------------------+
 ```
+
+An approval does not execute a proposal. Execute succeeds only after the
+proposal has collected its required number of distinct approval nullifiers.
+
+## Proof Flow
+
+```text
+[Member wallet]
+  private credential + Merkle path
+              |
+              v
+[RISC Zero threshold guest]
+  proves membership in the committed member root
+  emits a proposal-bound nullifier
+              |
+              | threshold receipt + public journal
+              v
+[Quorum SPEL gate]
+  binds the receipt to the constitution and proposal
+  updates proposal and credential state
+              |
+              | gate receipt
+              v
+[LEZ privacy circuit]
+  proves the private account state transition
+              |
+              | PrivacyPreservingTransaction
+              v
+[LEZ sequencer]
+  confirms state updates and chained calls
+```
+
+`quorum-composer` verifies and connects the three proof layers. The threshold
+receipt is an assumption of the gate proof; the gate receipt is an assumption
+of the LEZ privacy proof.
+
+## Execute Flow
+
+```text
+Execute(proposal)
+       |
+       +-- proposal exists? ---------------- no --> reject
+       |
+       +-- status is Active? --------------- no --> reject
+       |
+       +-- distinct approvals >= threshold? no --> keep Active
+       |
+       +-- Transfer --------> vault -> approved recipient
+       |
+       +-- RotateMembers ---> replace member root and member count
+       |
+       +-- ChangeThreshold -> replace M
+       |
+       +-- mark proposal Executed
+```
+
+A transfer emits a chained call from the program-derived vault to the approved
+recipient. Rotation and threshold changes update the constitution. Execution is
+one-shot.
 
 ## State
 
-The constitution stores the multisig ID, version, proposal counter, threshold,
-member count, member root, and spending tiers. It never stores the member list.
+```text
+Constitution
+  +-- multisig ID
+  +-- version
+  +-- threshold (M)
+  +-- member count (N)
+  +-- member root --------> commits to the private member set
+  +-- spending tiers
+  +-- proposal counter
+            |
+            +---- Proposal
+                    +-- action
+                    +-- constitution version
+                    +-- required threshold
+                    +-- approval nullifiers
+                    +-- Active | Executed | Cancelled
+```
 
-A proposal stores its constitution version, action, required threshold,
-accepted nullifiers, and status. Rotation replaces the member root and count,
-then increments the constitution version. Old proposals and credentials become
-stale.
+The constitution stores the member root, never the member list. Rotation
+increments its version, making old credentials and proposals stale.
 
-The treasury is a program-derived token account:
+The treasury address is derived from the multisig account:
 
 ```text
 vault_seed = SHA256("quorum/vault/v1" || multisig_account_id)
 ```
 
-Execution verifies the vault and approved recipient before emitting the token
-transfer chained call.
+## Components
 
-## Threshold proof
+| Component | Responsibility |
+|---|---|
+| `quorum-core` | Member commitments, proposals, nullifiers, and policy |
+| `lez-compat` | LEZ v0.2.2 account derivation and compatibility rules |
+| `quorum-circuit` | Threshold statement shared by host and guest |
+| `quorum-prover` | Threshold receipt generation and verification |
+| `quorum-gate-core` | Gate state and deterministic validation |
+| `quorum-gate` | SPEL program and generated IDL |
+| `quorum-composer` | Threshold, gate, and LEZ proof composition |
+| `quorum-sdk` / `quorum-cli` | Local workflow and state management |
+| `basecamp-quorum` | QML interface with an isolated CLI process |
 
-Each approval contains these private inputs:
-
-- LEZ nullifier secret key;
-- ML-KEM viewing public key;
-- private account identifier;
-- Merkle leaf position and siblings.
-
-The guest derives the LEZ private account ID, verifies its member commitment,
-and derives a proposal-bound nullifier:
-
-```text
-member = SHA256("quorum/v1/member" || private_account_id)
-nullifier = SHA256("quorum/v1/nullifier" || secret || proposal_id || version)
-```
-
-The public journal contains the member root, proposal ID, constitution version,
-required threshold, approval count, nullifiers, proposal-scoped credential
-commitments, and action. It contains no secret keys, account IDs, member list,
-or Merkle paths.
-
-The circuit accepts at most ten approvals. Individual and aggregated approvals
-use the same guest and image ID.
-
-## Receipt composition
-
-`quorum-composer` performs one ordered operation:
-
-1. Verify the threshold receipt against the pinned image.
-2. Check the proposal and credential bindings.
-3. Prove the gate with the threshold receipt as an assumption.
-4. Prove the LEZ privacy circuit with the gate receipt as an assumption.
-5. Build the signed `PrivacyPreservingTransaction`.
-
-The network client submits once, confirms by transaction hash, and reads public
-state. Private state reconciliation remains a wallet operation over encrypted
-outputs and commitment proofs.
-
-## Privacy boundary
+## Privacy Boundary
 
 | Private | Public |
 |---|---|
-| Member secrets and private account IDs | Multisig and proposal IDs |
-| Member list and Merkle paths | Threshold, member count, root, and tiers |
-| Approval attribution | Proposal action, approval count, and nullifiers |
-| Private credential post-state | Rotations, threshold changes, and transfer result |
+| Member secrets and account IDs | Multisig and proposal IDs |
+| Member list and Merkle paths | Member root, count, threshold, and tiers |
+| Approval ownership | Approval count and nullifiers |
+| Private credential state | Proposal action, status, and transfer result |
 
-Nullifiers and credential bindings change with the proposal or constitution
-version. Proposal contents, approval progress, transaction timing, and network
-metadata remain observable.
+The threshold journal contains the member root, proposal binding, action,
+approval count, nullifiers, and credential commitments. It contains no secret
+keys, private account IDs, member list, or Merkle paths.
 
-## Security boundary
+## Security Boundary
 
-The design depends on SHA-256, Risc0 receipt soundness, the pinned image IDs,
-LEZ private-account derivation, the LEZ privacy circuit, and secure credential
-storage. `RISC0_DEV_MODE=1` creates non-cryptographic test receipts. Quorum has
-not received an independent security audit and is not production-ready.
+Security depends on SHA-256, RISC Zero receipt soundness, pinned image IDs, LEZ
+account derivation, the LEZ privacy circuit, and secure credential storage.
+`RISC0_DEV_MODE=1` creates test receipts only. The project is unaudited and is
+not production-ready.
