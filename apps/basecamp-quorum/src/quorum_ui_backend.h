@@ -18,6 +18,12 @@ public:
 
     bool configureQuorumBinary(QString path) override;
     bool configureWorkingDirectory(QString path) override;
+    bool startConfigured(
+        QString operation,
+        QStringList arguments,
+        QString binaryPath,
+        QString workingDirectory
+    ) override;
     bool start(QString operation, QStringList arguments) override;
     bool cancel() override;
 

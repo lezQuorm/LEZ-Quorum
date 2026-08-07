@@ -7,6 +7,8 @@
 #include <QSettings>
 #include <QStandardPaths>
 
+#include <utility>
+
 namespace {
 
 constexpr char kSettingsOrg[] = "Logos";
@@ -136,6 +138,22 @@ bool QuorumUiBackend::configureWorkingDirectory(QString path) {
     QuorumUiSimpleSource::setLastError({});
     QSettings(kSettingsOrg, kSettingsApp).setValue(kWorkingDirectoryKey, path);
     return true;
+}
+
+bool QuorumUiBackend::startConfigured(
+    QString operation,
+    QStringList arguments,
+    QString binaryPath,
+    QString workingDirectory
+) {
+    if (busy()) {
+        return false;
+    }
+    if (!configureQuorumBinary(std::move(binaryPath))
+        || !configureWorkingDirectory(std::move(workingDirectory))) {
+        return false;
+    }
+    return start(std::move(operation), std::move(arguments));
 }
 
 bool QuorumUiBackend::start(QString operation, QStringList arguments) {

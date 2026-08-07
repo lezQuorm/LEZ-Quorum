@@ -11,6 +11,7 @@ class QuorumUi
 
     SLOT(bool configureQuorumBinary(QString path))
     SLOT(bool configureWorkingDirectory(QString path))
+    SLOT(bool startConfigured(QString operation, QStringList arguments, QString binaryPath, QString workingDirectory))
     SLOT(bool start(QString operation, QStringList arguments))
     SLOT(bool cancel())
 
