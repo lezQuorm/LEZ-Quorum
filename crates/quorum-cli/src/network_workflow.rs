@@ -20,14 +20,18 @@ use lee_core::{
 };
 use quorum_circuit::ActionData;
 use quorum_composer::{
-    compose_private_approval,
+    compose_private_approval_with_progress,
     lifecycle::{self, LifecycleAccounts, LifecycleSeeds},
     network::NetworkClient,
-    PrivateApprovalRequest,
+    PrivateApprovalPhase, PrivateApprovalRequest,
 };
-use quorum_gate_core::{decode_constitution, decode_proposal, ProposalStatus, TierPolicy};
+use quorum_core::nullifier::derive_nullifier;
+use quorum_gate_core::{
+    check_claim, decode_constitution, decode_proposal, OnChainThresholdJournal, ProposalStatus,
+    TierPolicy,
+};
 use quorum_gate_methods::QUORUM_GATE_ID;
-use quorum_prover::ensure_real_proving_mode;
+use quorum_prover::{ensure_real_proving_mode, verify_receipt, QuorumProof};
 use quorum_sdk::{viewing_public_key_for_secret, Member, MemberSet, Multisig};
 use rand::{rngs::OsRng, RngCore as _};
 use serde::{Deserialize, Serialize};
@@ -154,6 +158,15 @@ pub enum NetworkCommand {
         /// Member index in the protected local set.
         #[arg(long)]
         member: usize,
+        /// Proposal id.
+        #[arg(long, default_value_t = 0)]
+        proposal: u64,
+        /// Permit this public write after reviewing the prepared hash.
+        #[arg(long)]
+        confirm_public_write: bool,
+    },
+    /// Prove the remaining threshold approvals in one private transaction.
+    ApproveThreshold {
         /// Proposal id.
         #[arg(long, default_value_t = 0)]
         proposal: u64,
@@ -342,6 +355,10 @@ async fn run_async(
             proposal,
             confirm_public_write,
         } => approve(target, &rpc, member, proposal, confirm_public_write).await,
+        NetworkCommand::ApproveThreshold {
+            proposal,
+            confirm_public_write,
+        } => approve_threshold(target, &rpc, proposal, confirm_public_write).await,
         NetworkCommand::Execute {
             proposal,
             confirm_public_write,
@@ -768,52 +785,37 @@ async fn approve(
         return Err("proposal is not active".to_owned());
     }
 
-    let mut mirror = Multisig {
-        constitution,
-        proposals: vec![proposal],
-    };
-    let proof = mirror
-        .approve(proposal_id, &state.commitments, &member)
-        .map_err(|error| error.to_string())?;
     let claim_path = target
         .state_dir()
         .join(CLAIMS_DIR)
         .join(format!("claim-{proposal_id}-{member_index}.json"));
-    write_json(&claim_path, &proof)?;
+    let proof = if let Some(proof) = load_saved_claim(&claim_path, &constitution, &proposal)? {
+        print_proof_progress("threshold", "reusing verified threshold receipt");
+        proof
+    } else {
+        let mut mirror = Multisig {
+            constitution: constitution.clone(),
+            proposals: vec![proposal.clone()],
+        };
+        print_proof_progress(
+            "threshold",
+            &format!("proving approval for member {member_index}"),
+        );
+        let proof = mirror
+            .approve(proposal_id, &state.commitments, &member)
+            .map_err(|error| error.to_string())?;
+        write_json(&claim_path, &proof)?;
+        proof
+    };
 
-    let credential_id = member.account_id();
-    let vpk = ViewingPublicKey::from_bytes(viewing_public_key_for_secret(&member.secret).to_vec())
-        .map_err(|error| error.to_string())?;
-    let composed = compose_private_approval(
-        PrivateApprovalRequest {
-            programs: lifecycle::gate_program()
-                .map_err(|error| error.to_string())?
-                .into(),
-            pre_states: vec![
-                AccountWithMetadata::new(constitution_account, false, multisig_id),
-                AccountWithMetadata::new(proposal_account, false, proposal_account_id),
-                AccountWithMetadata::new(Account::default(), true, account_id(credential_id)),
-            ],
-            account_identities: vec![
-                InputAccountIdentity::Public,
-                InputAccountIdentity::Public,
-                InputAccountIdentity::PrivateAuthorizedInit {
-                    vpk,
-                    random_seed: random_bytes(),
-                    nsk: member.secret,
-                    identifier: member.account_identifier,
-                    commitment_root: DUMMY_COMMITMENT_HASH,
-                },
-            ],
-            dummy_inputs: Vec::new(),
-            public_account_ids: vec![multisig_id, proposal_account_id],
-            public_nonces: Vec::new(),
-            public_signers: Vec::new(),
-            proposal_id,
-        },
+    let composed = compose_network_approval(
+        &state,
+        &[&member],
+        constitution_account,
+        proposal_account,
+        proposal_id,
         &proof,
-    )
-    .map_err(|error| error.to_string())?;
+    )?;
     let confirmed = write_transaction(
         target,
         rpc,
@@ -826,6 +828,213 @@ async fn approve(
         sync_proposal(target, rpc).await?;
     }
     Ok(())
+}
+
+async fn approve_threshold(
+    target: NetworkTarget,
+    rpc: &str,
+    proposal_id: u64,
+    confirm_public_write: bool,
+) -> Result<(), String> {
+    if proposal_id != 0 {
+        return Err("the prepared demo lifecycle supports proposal 0 only".to_owned());
+    }
+    let label = format!("approve-{proposal_id}-threshold");
+    let existing = load_state(target, rpc)?;
+    require_confirmed(&existing, "propose")?;
+    if existing.transactions.contains_key(&label) {
+        return submit_saved(target, rpc, &label, confirm_public_write).await;
+    }
+
+    let (state, secrets) = load_all(target, rpc)?;
+    let client = client(rpc)?;
+    let multisig_id = account_id(state.accounts.multisig);
+    let proposal_account_id = account_id(state.accounts.proposal);
+    let constitution_account = client
+        .get_account(multisig_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let proposal_account = client
+        .get_account(proposal_account_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let constitution = client
+        .get_constitution(multisig_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let proposal = client
+        .get_proposal(proposal_account_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    validate_constitution(&state, &constitution)?;
+    validate_proposal(&state, &proposal)?;
+    if proposal.status != ProposalStatus::Active {
+        return Err("proposal is not active".to_owned());
+    }
+
+    let member_indexes = pending_member_indexes(&proposal, &constitution, &secrets)?;
+    let approving_members = member_indexes
+        .iter()
+        .map(|index| secrets.members[*index].clone())
+        .collect::<Vec<_>>();
+    let member_refs = approving_members.iter().collect::<Vec<_>>();
+    let claim_path = target
+        .state_dir()
+        .join(CLAIMS_DIR)
+        .join(format!("claim-{proposal_id}-threshold.json"));
+    let proof = if let Some(proof) = load_saved_claim(&claim_path, &constitution, &proposal)? {
+        print_proof_progress("threshold", "reusing verified threshold receipt");
+        proof
+    } else {
+        let mut mirror = Multisig {
+            constitution: constitution.clone(),
+            proposals: vec![proposal.clone()],
+        };
+        print_proof_progress(
+            "threshold",
+            &format!(
+                "proving {} remaining approvals in one receipt",
+                member_refs.len()
+            ),
+        );
+        let proof = mirror
+            .approve_many(proposal_id, &state.commitments, &member_refs)
+            .map_err(|error| error.to_string())?;
+        write_json(&claim_path, &proof)?;
+        proof
+    };
+
+    let composed = compose_network_approval(
+        &state,
+        &member_refs,
+        constitution_account,
+        proposal_account,
+        proposal_id,
+        &proof,
+    )?;
+    let confirmed = write_transaction(
+        target,
+        rpc,
+        &label,
+        LeeTransaction::PrivacyPreserving(composed.transaction),
+        confirm_public_write,
+    )
+    .await?;
+    if confirmed {
+        sync_proposal(target, rpc).await?;
+    }
+    Ok(())
+}
+
+fn load_saved_claim(
+    path: &Path,
+    constitution: &quorum_gate_core::ConstitutionState,
+    proposal: &quorum_gate_core::ProposalState,
+) -> Result<Option<QuorumProof>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let proof: QuorumProof = read_json(path)?;
+    let journal = verify_receipt(&proof).map_err(|error| error.to_string())?;
+    let onchain_journal = OnChainThresholdJournal::from(&journal);
+    if check_claim(constitution, proposal, &onchain_journal).is_err() {
+        return Ok(None);
+    }
+    Ok(Some(proof))
+}
+
+fn pending_member_indexes(
+    proposal: &quorum_gate_core::ProposalState,
+    constitution: &quorum_gate_core::ConstitutionState,
+    secrets: &SecretState,
+) -> Result<Vec<usize>, String> {
+    let required = usize::from(proposal.threshold);
+    let remaining = required.saturating_sub(proposal.nullifiers.len());
+    if remaining == 0 {
+        return Err("proposal threshold is already met".to_owned());
+    }
+    let indexes = secrets
+        .members
+        .iter()
+        .enumerate()
+        .filter_map(|(index, member)| {
+            let nullifier = derive_nullifier(&member.secret, proposal.id, constitution.version);
+            (!proposal.nullifiers.contains(&nullifier)).then_some(index)
+        })
+        .take(remaining)
+        .collect::<Vec<_>>();
+    if indexes.len() != remaining {
+        return Err(format!(
+            "only {} unused local members are available for {remaining} remaining approvals",
+            indexes.len()
+        ));
+    }
+    Ok(indexes)
+}
+
+fn compose_network_approval(
+    state: &NetworkState,
+    members: &[&Member],
+    constitution_account: Account,
+    proposal_account: Account,
+    proposal_id: u64,
+    proof: &quorum_prover::QuorumProof,
+) -> Result<quorum_composer::ComposedApproval, String> {
+    let multisig_id = account_id(state.accounts.multisig);
+    let proposal_account_id = account_id(state.accounts.proposal);
+    let mut pre_states = vec![
+        AccountWithMetadata::new(constitution_account, false, multisig_id),
+        AccountWithMetadata::new(proposal_account, false, proposal_account_id),
+    ];
+    let mut account_identities = vec![InputAccountIdentity::Public, InputAccountIdentity::Public];
+    for member in members {
+        let credential_id = member.account_id();
+        let vpk =
+            ViewingPublicKey::from_bytes(viewing_public_key_for_secret(&member.secret).to_vec())
+                .map_err(|error| error.to_string())?;
+        pre_states.push(AccountWithMetadata::new(
+            Account::default(),
+            true,
+            account_id(credential_id),
+        ));
+        account_identities.push(InputAccountIdentity::PrivateAuthorizedInit {
+            vpk,
+            random_seed: random_bytes(),
+            nsk: member.secret,
+            identifier: member.account_identifier,
+            commitment_root: DUMMY_COMMITMENT_HASH,
+        });
+    }
+    compose_private_approval_with_progress(
+        PrivateApprovalRequest {
+            programs: lifecycle::gate_program()
+                .map_err(|error| error.to_string())?
+                .into(),
+            pre_states,
+            account_identities,
+            dummy_inputs: Vec::new(),
+            public_account_ids: vec![multisig_id, proposal_account_id],
+            public_nonces: Vec::new(),
+            public_signers: Vec::new(),
+            proposal_id,
+        },
+        proof,
+        |phase| match phase {
+            PrivateApprovalPhase::GateProgram => {
+                print_proof_progress("gate", "proving Quorum gate execution");
+            }
+            PrivateApprovalPhase::PrivacyCircuit => {
+                print_proof_progress("privacy", "proving final LEZ private transaction");
+            }
+        },
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn print_proof_progress(phase: &str, detail: &str) {
+    println!("proof_phase={phase}");
+    println!("proof_detail={detail}");
+    let _ = std::io::stdout().flush();
 }
 
 async fn execute(
@@ -1560,5 +1769,43 @@ mod tests {
         let mut wrong_policy = proposal.clone();
         wrong_policy.threshold += 1;
         assert!(validate_proposal(&state, &wrong_policy).is_err());
+    }
+
+    #[test]
+    fn threshold_approval_selects_only_unused_members() {
+        let (state, secrets) = prepared_state();
+        let mut mirror = state.multisig.clone();
+        mirror
+            .propose(ActionData::Transfer {
+                recipient: state.accounts.recipient,
+                amount: state.transfer,
+                tier_id: TRANSFER_TIER,
+                tier_max_amount: 0,
+            })
+            .unwrap();
+        let constitution = mirror.constitution.clone();
+        let mut proposal = mirror.proposals[0].clone();
+
+        assert_eq!(
+            pending_member_indexes(&proposal, &constitution, &secrets).unwrap(),
+            vec![0, 1]
+        );
+
+        proposal.nullifiers.push(derive_nullifier(
+            &secrets.members[0].secret,
+            proposal.id,
+            constitution.version,
+        ));
+        assert_eq!(
+            pending_member_indexes(&proposal, &constitution, &secrets).unwrap(),
+            vec![1]
+        );
+
+        proposal.nullifiers.push(derive_nullifier(
+            &secrets.members[1].secret,
+            proposal.id,
+            constitution.version,
+        ));
+        assert!(pending_member_indexes(&proposal, &constitution, &secrets).is_err());
     }
 }

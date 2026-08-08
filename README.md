@@ -98,8 +98,8 @@ Testnet order:
    switch, and submit.
 3. In `Treasury`, process each selected action from token through proposal.
    Preview, review the hash, enable submission, and submit each action.
-4. Submit approvals for members `0` and `1`. Real proofs can take more than an
-   hour each.
+4. Generate one aggregate proof for the remaining threshold approvals, then
+   submit the prepared private transaction.
 5. Refresh in `Execute`, preview and submit execution, then confirm
    `vault_balance=500`, `recipient_balance=250`, and
    `proposal_status=Executed` in `State`.

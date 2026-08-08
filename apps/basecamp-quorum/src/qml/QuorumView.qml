@@ -40,6 +40,7 @@ Rectangle {
     property bool constitutionReady: false
     property bool proposalReady: false
     property int treasuryStep: 0
+    property int operationElapsedSeconds: 0
     readonly property real workflowTabWidth: Math.max(
         96,
         (Math.min(Math.max(0, root.width - Theme.spacing.xxlarge), 1280)
@@ -116,12 +117,37 @@ Rectangle {
         return names[value] || "Working"
     }
 
+    function elapsedTime() {
+        const minutes = Math.floor(root.operationElapsedSeconds / 60)
+        const seconds = root.operationElapsedSeconds % 60
+        return String(minutes) + ":"
+             + (seconds < 10 ? "0" : "") + String(seconds)
+    }
+
+    function activeProofText() {
+        const phases = {
+            "threshold": "1 of 3 - threshold receipt",
+            "gate": "2 of 3 - Quorum gate",
+            "privacy": "3 of 3 - LEZ private transaction"
+        }
+        const phase = root.outputValue("proof_phase")
+        const stage = phases[phase] || "Starting local prover"
+        const detail = root.outputValue("proof_detail")
+        return "Real proof active\n"
+             + "stage=" + stage + "\n"
+             + "elapsed=" + root.elapsedTime()
+             + (detail.length > 0 ? "\n" + detail : "")
+    }
+
     function activityText() {
         if (!root.backend)
             return "Quorum backend unavailable"
 
         const output = root.backend.lastOutput || ""
         const error = root.backend.lastError || ""
+        if (root.operationBusy
+                && root.backend.activeOperation === "network-approve")
+            return root.activeProofText()
         if (output.length > 0 && error.length > 0)
             return output + "\n\n" + error
         if (error.indexOf("state already exists") >= 0)
@@ -458,10 +484,7 @@ Rectangle {
                     }
                 } else if (root.lastRequestSubmitted
                            && root.lastRequestedOperation === "network-approve") {
-                    if (memberIdx.value + 1 < thresholdSpinner.value)
-                        memberIdx.value += 1
-                    else
-                        tabs.currentIndex = 3
+                    tabs.currentIndex = 3
                 } else if (root.lastRequestSubmitted
                            && root.lastRequestedOperation === "network-execute") {
                     tabs.currentIndex = 4
@@ -470,6 +493,18 @@ Rectangle {
             publicWriteCheck.checked = false
             root.lastRequestSubmitted = false
         }
+    }
+
+    onOperationBusyChanged: {
+        if (root.operationBusy)
+            root.operationElapsedSeconds = 0
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.operationBusy
+        onTriggered: root.operationElapsedSeconds += 1
     }
 
     onTestnetModeChanged: {
@@ -1150,6 +1185,7 @@ Rectangle {
                                     spacing: Theme.spacing.medium
 
                                     ColumnLayout {
+                                        visible: !root.testnetMode
                                         Layout.fillWidth: true
                                         spacing: Theme.spacing.tiny
                                         FieldLabel { text: "Member index" }
@@ -1190,9 +1226,8 @@ Rectangle {
                                             if (root.testnetMode) {
                                                 root.runNetwork(
                                                     "network-approve",
-                                                    "approve",
-                                                    ["--member", String(memberIdx.value),
-                                                     "--proposal", String(proposalIdx.value)],
+                                                    "approve-threshold",
+                                                    ["--proposal", String(proposalIdx.value)],
                                                     true)
                                             } else {
                                                 root.run(
@@ -1592,6 +1627,7 @@ Rectangle {
                             Layout.fillWidth: true
                             text: root.operationBusy
                                   ? root.operationName(root.backend.activeOperation)
+                                    + " (" + root.elapsedTime() + ")"
                                   : (root.hasError ? "Review the error above" : "Ready for next action")
                             color: Theme.palette.textTertiary
                             font.pixelSize: Theme.typography.secondaryText

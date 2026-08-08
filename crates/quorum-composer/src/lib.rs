@@ -131,6 +131,15 @@ pub struct ComposedApproval {
     pub credential_account_ids: Vec<[u8; 32]>,
 }
 
+/// Long-running stages reported while composing a private approval.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrivateApprovalPhase {
+    /// Prove the Quorum gate execution, including the threshold receipt assumption.
+    GateProgram,
+    /// Prove the outer LEZ privacy-preserving transaction.
+    PrivacyCircuit,
+}
+
 /// Verifies a proof artifact and binds it to private credential account ids.
 ///
 /// # Errors
@@ -173,6 +182,19 @@ pub fn compose_private_approval(
     request: PrivateApprovalRequest,
     proof: &QuorumProof,
 ) -> Result<ComposedApproval, ComposerError> {
+    compose_private_approval_with_progress(request, proof, |_| {})
+}
+
+/// Builds a private LEZ approval transaction and reports its proving stages.
+///
+/// # Errors
+/// Returns [`ComposerError`] under the same conditions as
+/// [`compose_private_approval`].
+pub fn compose_private_approval_with_progress(
+    request: PrivateApprovalRequest,
+    proof: &QuorumProof,
+    mut report: impl FnMut(PrivateApprovalPhase),
+) -> Result<ComposedApproval, ComposerError> {
     if request.pre_states.len() < 3 {
         return Err(ComposerError::MissingAccounts);
     }
@@ -197,6 +219,7 @@ pub fn compose_private_approval(
         request.dummy_inputs,
         request.programs,
         prepared.receipt,
+        &mut report,
     )?;
     let message = PrivateMessage::from_circuit_output(request.public_nonces, output);
     if message.public_account_ids() != request.public_account_ids {
@@ -220,6 +243,7 @@ fn execute_and_prove_private(
     dummy_inputs: Vec<DummyInput>,
     programs: ProgramWithDependencies,
     threshold_receipt: Receipt,
+    report: &mut impl FnMut(PrivateApprovalPhase),
 ) -> Result<(PrivacyPreservingCircuitOutput, LeeProof), ComposerError> {
     let ProgramWithDependencies {
         program: initial_program,
@@ -242,6 +266,7 @@ fn execute_and_prove_private(
         if call_count >= MAX_CHAINED_CALLS {
             return Err(ComposerError::MaxChainedCalls);
         }
+        report(PrivateApprovalPhase::GateProgram);
         let receipt = prove_program(
             &program,
             caller_program_id,
@@ -278,6 +303,7 @@ fn execute_and_prove_private(
     let privacy_env = privacy_env
         .build()
         .map_err(|error| ComposerError::ExecutorInput(error.to_string()))?;
+    report(PrivateApprovalPhase::PrivacyCircuit);
     let prove_info = default_prover()
         .prove_with_opts(
             privacy_env,
