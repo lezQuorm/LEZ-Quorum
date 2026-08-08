@@ -25,6 +25,7 @@ Rectangle {
                                                 : Theme.palette.textMuted))
     readonly property bool testnetMode: modeTabs.currentIndex === 1
     readonly property string lastOutput: root.backend ? (root.backend.lastOutput || "") : ""
+    readonly property string activityTransactionHash: root.confirmedTransactionHash()
     readonly property bool liveThresholdMet: root.outputNumber("approvals")
                                                 >= root.outputNumber("required_approvals")
                                              && root.outputNumber("required_approvals") > 0
@@ -46,7 +47,25 @@ Rectangle {
          - Theme.spacing.large * 2) / 5)
 
     function isHex64(value) {
-        return /^[0-9a-fA-F]{64}$/.test((value || "").trim())
+        const text = (value || "").trim()
+        return text.length === 64 && !/[^0-9a-fA-F]/.test(text)
+    }
+
+    function confirmedTransactionHash() {
+        const output = root.lastOutput
+        if (output.indexOf("transaction_status=confirmed") < 0
+                && output.indexOf("confirmation_block=") < 0)
+            return ""
+        const hash = root.outputValue("transaction_hash")
+        return root.isHex64(hash) ? hash : ""
+    }
+
+    function openActivityTransaction() {
+        if (root.activityTransactionHash.length !== 64)
+            return
+        Qt.openUrlExternally(
+            "https://explorer.testnet.lez.logos.co/transaction/"
+            + root.activityTransactionHash)
     }
 
     function operationName(value) {
@@ -269,6 +288,8 @@ Rectangle {
     }
 
     function treasuryActionLabel() {
+        if (root.treasuryStep >= 5)
+            return "Treasury complete"
         const labels = [
             "token",
             "recipient",
@@ -992,18 +1013,12 @@ Rectangle {
                                     font.pixelSize: Theme.typography.secondaryText
                                 }
 
-                                GridLayout {
+                                ColumnLayout {
                                     visible: root.testnetMode
                                     Layout.fillWidth: true
-                                    columns: width >= 520 ? 2 : 1
-                                    columnSpacing: Theme.spacing.small
-                                    rowSpacing: Theme.spacing.small
+                                    spacing: 0
 
-                                    LogosComboBox {
-                                        id: treasuryAction
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 40
-                                        enabled: false
+                                    Repeater {
                                         model: [
                                             "Create token",
                                             "Initialize recipient",
@@ -1011,11 +1026,70 @@ Rectangle {
                                             "Fund vault",
                                             "Open proposal"
                                         ]
-                                        currentIndex: Math.min(root.treasuryStep, 4)
+
+                                        delegate: Rectangle {
+                                            required property int index
+                                            required property string modelData
+
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 44
+                                            color: index === root.treasuryStep
+                                                   ? Theme.palette.backgroundMuted
+                                                   : "transparent"
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: Theme.spacing.medium
+                                                anchors.rightMargin: Theme.spacing.medium
+                                                spacing: Theme.spacing.medium
+
+                                                LogosText {
+                                                    text: String(index + 1)
+                                                    color: index <= root.treasuryStep
+                                                           ? Theme.palette.text
+                                                           : Theme.palette.textMuted
+                                                    font.pixelSize: Theme.typography.secondaryText
+                                                    font.weight: Theme.typography.weightMedium
+                                                }
+
+                                                LogosText {
+                                                    Layout.fillWidth: true
+                                                    text: modelData
+                                                    color: index <= root.treasuryStep
+                                                           ? Theme.palette.text
+                                                           : Theme.palette.textMuted
+                                                    font.pixelSize: Theme.typography.primaryText
+                                                }
+
+                                                LogosText {
+                                                    text: index < root.treasuryStep
+                                                          ? "Complete"
+                                                          : (index === root.treasuryStep
+                                                             ? "Next"
+                                                             : "Locked")
+                                                    color: index < root.treasuryStep
+                                                           ? Theme.palette.success
+                                                           : (index === root.treasuryStep
+                                                              ? Theme.palette.primary
+                                                              : Theme.palette.textMuted)
+                                                    font.pixelSize: Theme.typography.secondaryText
+                                                    font.weight: Theme.typography.weightMedium
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.bottom: parent.bottom
+                                                height: 1
+                                                color: Theme.palette.borderSecondary
+                                            }
+                                        }
                                     }
 
                                     PrimaryButton {
                                         Layout.fillWidth: true
+                                        Layout.topMargin: Theme.spacing.medium
                                         text: root.treasuryActionLabel()
                                         enabled: root.canRun && root.constitutionReady && root.treasuryStep < 5
                                         onClicked: root.runTreasuryAction()
@@ -1417,6 +1491,17 @@ Rectangle {
                             color: Theme.palette.text
                             font.pixelSize: Theme.typography.primaryText
                             font.weight: Theme.typography.weightMedium
+                        }
+
+                        LogosButton {
+                            visible: root.activityTransactionHash.length === 64
+                            text: "Explorer"
+                            radius: Theme.spacing.radiusMedium
+                            Layout.preferredWidth: 84
+                            Layout.preferredHeight: 30
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Open confirmed transaction in LEZ Block Explorer"
+                            onClicked: root.openActivityTransaction()
                         }
 
                         LogosButton {
