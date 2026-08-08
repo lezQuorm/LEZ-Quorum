@@ -9,6 +9,11 @@
 
 #include <utility>
 
+#ifdef Q_OS_UNIX
+#include <csignal>
+#include <unistd.h>
+#endif
+
 namespace {
 
 constexpr char kSettingsOrg[] = "Logos";
@@ -17,7 +22,6 @@ constexpr char kBinaryKey[] = "quorumBinary";
 constexpr char kWorkingDirectoryKey[] = "workingDirectory";
 constexpr int kStartTimeoutMs = 10'000;
 constexpr int kOperationTimeoutMs = 30 * 60 * 1'000;
-constexpr int kProofTimeoutMs = 4 * 60 * 60 * 1'000;
 constexpr int kCancelGraceMs = 3'000;
 
 QString normalizedPath(const QString& value) {
@@ -55,13 +59,33 @@ bool isProofOperation(const QStringList& arguments) {
         return true;
     }
     return arguments.first() == QStringLiteral("network")
-        && arguments.contains(QStringLiteral("approve"));
+        && (arguments.contains(QStringLiteral("approve"))
+            || arguments.contains(QStringLiteral("approve-threshold")));
+}
+
+void signalProcessTree(QProcess* process, bool force) {
+#ifdef Q_OS_UNIX
+    const qint64 pid = process->processId();
+    if (pid > 0
+        && ::kill(-static_cast<pid_t>(pid), force ? SIGKILL : SIGTERM) == 0) {
+        return;
+    }
+#endif
+    if (force) {
+        process->kill();
+    } else {
+        process->terminate();
+    }
 }
 
 } // namespace
 
 QuorumUiBackend::QuorumUiBackend()
     : QuorumUiSimpleSource(), m_process(new QProcess(this)) {
+#ifdef Q_OS_UNIX
+    m_process->setChildProcessModifier([]() { (void)::setpgid(0, 0); });
+#endif
+
     QSettings settings(kSettingsOrg, kSettingsApp);
     QString binary = settings.value(kBinaryKey).toString();
     if (binary.isEmpty()) {
@@ -105,8 +129,11 @@ QuorumUiBackend::QuorumUiBackend()
 
 QuorumUiBackend::~QuorumUiBackend() {
     if (m_process->state() != QProcess::NotRunning) {
-        m_process->kill();
-        m_process->waitForFinished(1'000);
+        signalProcessTree(m_process, false);
+        if (!m_process->waitForFinished(1'000)) {
+            signalProcessTree(m_process, true);
+            m_process->waitForFinished(1'000);
+        }
     }
 }
 
@@ -219,7 +246,11 @@ bool QuorumUiBackend::start(QString operation, QStringList arguments) {
         failToStart(QStringLiteral("start"), m_process->errorString());
         return false;
     }
-    m_timeout.start(isProofOperation(arguments) ? kProofTimeoutMs : kOperationTimeoutMs);
+    if (isProofOperation(arguments)) {
+        m_timeout.stop();
+    } else {
+        m_timeout.start(kOperationTimeoutMs);
+    }
     return true;
 }
 
@@ -304,10 +335,10 @@ void QuorumUiBackend::failToStart(const QString& kind, const QString& message) {
 }
 
 void QuorumUiBackend::stopProcess() {
-    m_process->terminate();
+    signalProcessTree(m_process, false);
     QTimer::singleShot(kCancelGraceMs, m_process, [process = m_process]() {
         if (process->state() != QProcess::NotRunning) {
-            process->kill();
+            signalProcessTree(process, true);
         }
     });
 }
