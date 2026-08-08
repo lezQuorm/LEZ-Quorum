@@ -33,6 +33,9 @@ Rectangle {
     property bool testnetSessionAssigned: false
     property string lastRequestedOperation: ""
     property bool lastRequestSubmitted: false
+    property bool constitutionReady: false
+    property bool proposalReady: false
+    property int treasuryStep: 0
     readonly property real workflowTabWidth: Math.max(
         96,
         (Math.min(Math.max(0, root.width - Theme.spacing.xxlarge), 1280)
@@ -81,6 +84,8 @@ Rectangle {
             return output + "\n\n" + error
         if (error.indexOf("state already exists") >= 0)
             return "This session is already prepared. Select New session, then prepare private state."
+        if (error.indexOf("initialize must be confirmed first") >= 0)
+            return "Initialization is prepared but not submitted. Return to Setup, enable testnet submission, then submit initialization."
         if (error.length > 0)
             return error
         if (output.length > 0)
@@ -126,6 +131,21 @@ Rectangle {
             + pad(now.getMilliseconds(), 3)
     }
 
+    function activateTestnetSession() {
+        const current = root.backend
+                      ? (root.backend.workingDirectory || "").trim()
+                      : ""
+        if (current.indexOf("/lez-quorum-testnet-") >= 0) {
+            testnetWorkingDirectoryField.text = current
+            root.testnetSessionAssigned = true
+            Qt.callLater(function() {
+                root.runNetwork("network-status", "status", [], false)
+            })
+            return true
+        }
+        return root.newTestnetSession()
+    }
+
     function newTestnetSession() {
         if (!root.ready || !root.backend || root.operationBusy)
             return false
@@ -144,7 +164,9 @@ Rectangle {
         root.testnetSessionAssigned = true
         publicWriteCheck.checked = false
         setupAction.currentIndex = 0
-        treasuryAction.currentIndex = 0
+        root.constitutionReady = false
+        root.proposalReady = false
+        root.treasuryStep = 0
         tabs.currentIndex = 0
         return true
     }
@@ -179,6 +201,41 @@ Rectangle {
              : "Preview initialization"
     }
 
+    function transactionConfirmed(output, label) {
+        const lines = (output || "").split("\n")
+        const prefix = "transaction=" + label + " "
+        for (let index = 0; index < lines.length; ++index) {
+            if (lines[index].indexOf(prefix) === 0
+                    && lines[index].indexOf("status=Confirmed") >= 0)
+                return true
+        }
+        return false
+    }
+
+    function updateTestnetProgress(output) {
+        root.constitutionReady = (output || "").indexOf(
+            "constitution_status=initialized") >= 0
+        if (root.constitutionReady
+                || (output || "").indexOf("transaction=initialize ") >= 0)
+            setupAction.currentIndex = 1
+
+        const labels = [
+            "create-token",
+            "initialize-recipient",
+            "initialize-vault",
+            "fund",
+            "propose"
+        ]
+        let confirmed = 0
+        while (confirmed < labels.length
+               && root.transactionConfirmed(output, labels[confirmed]))
+            confirmed += 1
+        root.treasuryStep = confirmed
+        root.proposalReady = confirmed >= labels.length
+                             || (output || "").indexOf("proposal_status=Active") >= 0
+                             || (output || "").indexOf("proposal_status=Executed") >= 0
+    }
+
     function treasuryCommand() {
         const commands = [
             "create-token",
@@ -187,7 +244,7 @@ Rectangle {
             "fund",
             "propose"
         ]
-        return commands[treasuryAction.currentIndex]
+        return commands[Math.min(root.treasuryStep, 4)]
     }
 
     function treasuryOperation() {
@@ -198,7 +255,7 @@ Rectangle {
             "network-fund",
             "network-propose"
         ]
-        return operations[treasuryAction.currentIndex]
+        return operations[Math.min(root.treasuryStep, 4)]
     }
 
     function treasuryActionLabel() {
@@ -210,10 +267,19 @@ Rectangle {
             "proposal"
         ]
         return (publicWriteCheck.checked ? "Submit " : "Preview ")
-             + labels[treasuryAction.currentIndex]
+             + labels[Math.min(root.treasuryStep, 4)]
     }
 
     function runTreasuryAction() {
+        if (!root.constitutionReady) {
+            tabs.currentIndex = 0
+            setupAction.currentIndex = 1
+            return false
+        }
+        if (root.treasuryStep >= 5) {
+            tabs.currentIndex = 2
+            return false
+        }
         return root.runNetwork(
             root.treasuryOperation(),
             root.treasuryCommand(),
@@ -319,19 +385,23 @@ Rectangle {
         function onWorkingDirectoryChanged() { root.syncRuntimeFields() }
         function onOperationFinished(success, exitCode, output, error) {
             if (success && root.testnetMode) {
-                if (root.lastRequestedOperation === "network-deployment") {
+                if (root.lastRequestedOperation === "network-status") {
+                    root.updateTestnetProgress(output)
+                } else if (root.lastRequestedOperation === "network-deployment") {
                     setupAction.currentIndex = 1
                 } else if (root.lastRequestSubmitted
                            && root.lastRequestedOperation === "network-initialize") {
+                    root.constitutionReady = true
                     tabs.currentIndex = 1
                 } else if (root.lastRequestSubmitted
                            && ["network-token", "network-recipient",
                                "network-vault", "network-fund",
                                "network-propose"].indexOf(root.lastRequestedOperation) >= 0) {
-                    if (treasuryAction.currentIndex < 4)
-                        treasuryAction.currentIndex += 1
-                    else
+                    root.treasuryStep += 1
+                    if (root.treasuryStep >= 5) {
+                        root.proposalReady = true
                         tabs.currentIndex = 2
+                    }
                 } else if (root.lastRequestSubmitted
                            && root.lastRequestedOperation === "network-approve") {
                     if (memberIdx.value + 1 < thresholdSpinner.value)
@@ -352,7 +422,7 @@ Rectangle {
         publicWriteCheck.checked = false
         tabs.currentIndex = 0
         if (root.testnetMode && !root.testnetSessionAssigned)
-            Qt.callLater(root.newTestnetSession)
+            Qt.callLater(root.activateTestnetSession)
     }
 
     Component.onCompleted: {
@@ -653,14 +723,17 @@ Rectangle {
                         LogosTabButton {
                             width: root.workflowTabWidth
                             text: root.testnetMode ? "2  Treasury" : "Propose"
+                            enabled: !root.testnetMode || root.constitutionReady
                         }
                         LogosTabButton {
                             width: root.workflowTabWidth
                             text: root.testnetMode ? "3  Approve" : "Approve"
+                            enabled: !root.testnetMode || root.proposalReady
                         }
                         LogosTabButton {
                             width: root.workflowTabWidth
                             text: root.testnetMode ? "4  Execute" : "Rotate"
+                            enabled: !root.testnetMode || root.proposalReady
                         }
                         LogosTabButton {
                             width: root.workflowTabWidth
@@ -910,6 +983,7 @@ Rectangle {
                                         id: treasuryAction
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 40
+                                        enabled: false
                                         model: [
                                             "Create token",
                                             "Initialize recipient",
@@ -917,13 +991,13 @@ Rectangle {
                                             "Fund vault",
                                             "Open proposal"
                                         ]
-                                        currentIndex: 0
+                                        currentIndex: Math.min(root.treasuryStep, 4)
                                     }
 
                                     PrimaryButton {
                                         Layout.fillWidth: true
                                         text: root.treasuryActionLabel()
-                                        enabled: root.canRun
+                                        enabled: root.canRun && root.constitutionReady && root.treasuryStep < 5
                                         onClicked: root.runTreasuryAction()
                                     }
                                 }
