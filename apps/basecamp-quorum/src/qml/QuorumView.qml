@@ -53,11 +53,31 @@ Rectangle {
 
     function confirmedTransactionHash() {
         const output = root.lastOutput
-        if (output.indexOf("transaction_status=confirmed") < 0
-                && output.indexOf("confirmation_block=") < 0)
-            return ""
-        const hash = root.outputValue("transaction_hash")
-        return root.isHex64(hash) ? hash : ""
+        const directHash = root.outputValue("transaction_hash")
+        const directConfirmed = output.indexOf("transaction_status=confirmed") >= 0
+                                || output.indexOf("confirmation_block=") >= 0
+        if (directConfirmed && root.isHex64(directHash))
+            return directHash
+
+        const lines = output.split("\n")
+        let latestHash = ""
+        let latestBlock = -1
+        for (let index = 0; index < lines.length; ++index) {
+            const line = lines[index]
+            if (line.indexOf("transaction=") !== 0
+                    || line.indexOf("status=Confirmed") < 0)
+                continue
+            const hashMatch = line.match(/hash=([0-9a-fA-F]{64})/)
+            const blockMatch = line.match(/block=([0-9]+)/)
+            if (!hashMatch || !blockMatch)
+                continue
+            const block = Number(blockMatch[1])
+            if (block > latestBlock) {
+                latestBlock = block
+                latestHash = hashMatch[1]
+            }
+        }
+        return latestHash
     }
 
     function openActivityTransaction() {
