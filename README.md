@@ -91,6 +91,19 @@ The module provides `Local` and `LEZ Testnet` modes. Testnet submission requires
 a single-use confirmation in the interface. The build produces native and
 portable LGX packages.
 
+Testnet order:
+
+1. Select `LEZ Testnet`, then run `Check RPC` and `Prepare private state`.
+2. Verify the deployed gate, preview initialization, enable the submission
+   switch, and submit.
+3. In `Treasury`, process each selected action from token through proposal.
+   Preview, review the hash, enable submission, and submit each action.
+4. Submit approvals for members `0` and `1`. Real proofs can take more than an
+   hour each.
+5. Refresh in `Execute`, preview and submit execution, then confirm
+   `vault_balance=500`, `recipient_balance=250`, and
+   `proposal_status=Executed` in `State`.
+
 ## Workspace
 
 | Path | Purpose |

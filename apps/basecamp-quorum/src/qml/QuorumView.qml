@@ -30,6 +30,9 @@ Rectangle {
                                              && root.outputNumber("required_approvals") > 0
                                              && root.outputValue("proposal_status") === "Active"
     property bool ready: false
+    property bool testnetSessionAssigned: false
+    property string lastRequestedOperation: ""
+    property bool lastRequestSubmitted: false
 
     function isHex64(value) {
         return /^[0-9a-fA-F]{64}$/.test((value || "").trim())
@@ -71,6 +74,8 @@ Rectangle {
         const error = root.backend.lastError || ""
         if (output.length > 0 && error.length > 0)
             return output + "\n\n" + error
+        if (error.indexOf("state already exists") >= 0)
+            return "This session is already prepared. Select New session, then prepare private state."
         if (error.length > 0)
             return error
         if (output.length > 0)
@@ -87,6 +92,8 @@ Rectangle {
             binaryField.text = root.backend.quorumBinary || "quorum"
         if (!workingDirectoryField.textInput.activeFocus)
             workingDirectoryField.text = root.backend.workingDirectory || ""
+        if (!testnetWorkingDirectoryField.textInput.activeFocus)
+            testnetWorkingDirectoryField.text = root.backend.workingDirectory || ""
     }
 
     function applyRuntime() {
@@ -96,14 +103,131 @@ Rectangle {
         root.backend.configureWorkingDirectory(workingDirectoryField.text)
     }
 
+    function sessionTimestamp() {
+        const now = new Date()
+        function pad(value, size) {
+            let result = String(value)
+            while (result.length < size)
+                result = "0" + result
+            return result
+        }
+        return String(now.getFullYear())
+            + pad(now.getMonth() + 1, 2)
+            + pad(now.getDate(), 2)
+            + "-"
+            + pad(now.getHours(), 2)
+            + pad(now.getMinutes(), 2)
+            + pad(now.getSeconds(), 2)
+            + pad(now.getMilliseconds(), 3)
+    }
+
+    function newTestnetSession() {
+        if (!root.ready || !root.backend || root.operationBusy)
+            return false
+
+        let current = (root.backend.workingDirectory || testnetWorkingDirectoryField.text || "").trim()
+        const separator = current.lastIndexOf("/")
+        const parentDirectory = separator > 0
+                                ? current.slice(0, separator)
+                                : "/tmp"
+        const sessionDirectory = parentDirectory
+                               + "/lez-quorum-testnet-"
+                               + root.sessionTimestamp()
+
+        testnetWorkingDirectoryField.text = sessionDirectory
+        root.testnetSessionAssigned = root.backend.configureWorkingDirectory(sessionDirectory)
+        publicWriteCheck.checked = false
+        setupAction.currentIndex = 0
+        treasuryAction.currentIndex = 0
+        tabs.currentIndex = 0
+        return root.testnetSessionAssigned
+    }
+
+    function prepareTestnetState() {
+        if (!root.testnetSessionAssigned && !root.newTestnetSession())
+            return false
+        return root.runNetwork(
+            "network-prepare",
+            "prepare",
+            ["--threshold", String(thresholdSpinner.value),
+             "--members", String(memberSpinner.value),
+             "--funding", "750",
+             "--transfer", "250"],
+            false)
+    }
+
+    function runSetupAction() {
+        if (setupAction.currentIndex === 0) {
+            return root.runNetwork(
+                "network-deployment", "deployment", [], false)
+        }
+        return root.runNetwork(
+            "network-initialize", "initialize", [], true)
+    }
+
+    function setupActionLabel() {
+        if (setupAction.currentIndex === 0)
+            return "Verify deployment"
+        return publicWriteCheck.checked
+             ? "Submit initialization"
+             : "Preview initialization"
+    }
+
+    function treasuryCommand() {
+        const commands = [
+            "create-token",
+            "initialize-recipient",
+            "initialize-vault",
+            "fund",
+            "propose"
+        ]
+        return commands[treasuryAction.currentIndex]
+    }
+
+    function treasuryOperation() {
+        const operations = [
+            "network-token",
+            "network-recipient",
+            "network-vault",
+            "network-fund",
+            "network-propose"
+        ]
+        return operations[treasuryAction.currentIndex]
+    }
+
+    function treasuryActionLabel() {
+        const labels = [
+            "token",
+            "recipient",
+            "vault",
+            "funding",
+            "proposal"
+        ]
+        return (publicWriteCheck.checked ? "Submit " : "Preview ")
+             + labels[treasuryAction.currentIndex]
+    }
+
+    function runTreasuryAction() {
+        return root.runNetwork(
+            root.treasuryOperation(),
+            root.treasuryCommand(),
+            [],
+            true)
+    }
+
     function run(label, args) {
         if (!root.canRun)
             return false
-        return root.backend.startConfigured(
+        const started = root.backend.startConfigured(
             label,
             args,
             binaryField.text,
-            workingDirectoryField.text)
+            root.testnetMode ? testnetWorkingDirectoryField.text : workingDirectoryField.text)
+        if (started) {
+            root.lastRequestedOperation = label
+            root.lastRequestSubmitted = args.indexOf("--confirm-public-write") >= 0
+        }
+        return started
     }
 
     function networkArguments(command, args, publicWrite) {
@@ -190,13 +314,41 @@ Rectangle {
         function onQuorumBinaryChanged() { root.syncRuntimeFields() }
         function onWorkingDirectoryChanged() { root.syncRuntimeFields() }
         function onOperationFinished(success, exitCode, output, error) {
+            if (success && root.testnetMode) {
+                if (root.lastRequestedOperation === "network-deployment") {
+                    setupAction.currentIndex = 1
+                } else if (root.lastRequestSubmitted
+                           && root.lastRequestedOperation === "network-initialize") {
+                    tabs.currentIndex = 1
+                } else if (root.lastRequestSubmitted
+                           && ["network-token", "network-recipient",
+                               "network-vault", "network-fund",
+                               "network-propose"].indexOf(root.lastRequestedOperation) >= 0) {
+                    if (treasuryAction.currentIndex < 4)
+                        treasuryAction.currentIndex += 1
+                    else
+                        tabs.currentIndex = 2
+                } else if (root.lastRequestSubmitted
+                           && root.lastRequestedOperation === "network-approve") {
+                    if (memberIdx.value + 1 < thresholdSpinner.value)
+                        memberIdx.value += 1
+                    else
+                        tabs.currentIndex = 3
+                } else if (root.lastRequestSubmitted
+                           && root.lastRequestedOperation === "network-execute") {
+                    tabs.currentIndex = 4
+                }
+            }
             publicWriteCheck.checked = false
+            root.lastRequestSubmitted = false
         }
     }
 
     onTestnetModeChanged: {
         publicWriteCheck.checked = false
         tabs.currentIndex = 0
+        if (root.testnetMode && !root.testnetSessionAssigned)
+            Qt.callLater(root.newTestnetSession)
     }
 
     Component.onCompleted: {
@@ -320,20 +472,43 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: Theme.spacing.large
                 anchors.rightMargin: Theme.spacing.large
-                spacing: Theme.spacing.small
+                spacing: Theme.spacing.medium
 
                 RowLayout {
                     Layout.fillWidth: true
+                    spacing: Theme.spacing.small
 
                     LogosText {
                         Layout.fillWidth: true
-                        text: "Runtime"
+                        text: root.testnetMode ? "Testnet session" : "Runtime"
                         color: Theme.palette.text
                         font.pixelSize: Theme.typography.primaryText
                         font.weight: Theme.typography.weightMedium
                     }
 
                     LogosButton {
+                        visible: root.testnetMode
+                        text: "Check RPC"
+                        radius: Theme.spacing.radiusMedium
+                        enabled: root.canRun
+                        Layout.preferredWidth: 104
+                        Layout.preferredHeight: 34
+                        onClicked: root.runNetwork(
+                            "network-health", "health", [], false)
+                    }
+
+                    LogosButton {
+                        visible: root.testnetMode
+                        text: "New session"
+                        radius: Theme.spacing.radiusMedium
+                        enabled: root.canRun
+                        Layout.preferredWidth: 112
+                        Layout.preferredHeight: 34
+                        onClicked: root.newTestnetSession()
+                    }
+
+                    LogosButton {
+                        visible: !root.testnetMode
                         text: "Apply"
                         radius: Theme.spacing.radiusMedium
                         enabled: root.canRun
@@ -344,8 +519,9 @@ Rectangle {
                 }
 
                 GridLayout {
+                    visible: !root.testnetMode
                     Layout.fillWidth: true
-                    columns: width >= 920 ? (root.testnetMode ? 3 : 2) : 1
+                    columns: width >= 720 ? 2 : 1
                     columnSpacing: Theme.spacing.medium
                     rowSpacing: Theme.spacing.small
 
@@ -378,43 +554,56 @@ Rectangle {
                             textInput.selectByMouse: true
                         }
                     }
+                }
+
+                GridLayout {
+                    visible: root.testnetMode
+                    Layout.fillWidth: true
+                    columns: width >= 720 ? 2 : 1
+                    columnSpacing: Theme.spacing.medium
+                    rowSpacing: Theme.spacing.small
 
                     ColumnLayout {
-                        visible: root.testnetMode
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         spacing: Theme.spacing.tiny
 
-                        RowLayout {
+                        FieldLabel { text: "Private session directory" }
+
+                        LogosTextField {
+                            id: testnetWorkingDirectoryField
                             Layout.fillWidth: true
-
-                            FieldLabel {
-                                Layout.fillWidth: true
-                                text: "Sequencer RPC"
-                            }
-
-                            CheckBox {
-                                id: customRpcCheck
-                                text: "Custom"
+                            placeholderText: "/absolute/path/to/session"
+                            textInput.selectByMouse: true
+                            onTextChanged: {
+                                if (activeFocus)
+                                    root.testnetSessionAssigned = true
                             }
                         }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        spacing: Theme.spacing.tiny
+
+                        FieldLabel { text: "Sequencer RPC" }
 
                         LogosTextField {
                             id: rpcField
                             Layout.fillWidth: true
                             text: "https://testnet.lez.logos.co"
-                            enabled: customRpcCheck.checked
                             textInput.selectByMouse: true
                         }
                     }
                 }
 
-                CheckBox {
+                LogosSwitch {
                     id: publicWriteCheck
 
                     visible: root.testnetMode
                     enabled: root.canRun
-                    text: "Allow the next public testnet submission"
+                    text: "Submit next action to LEZ testnet"
                 }
             }
         }
@@ -455,18 +644,24 @@ Rectangle {
 
                         LogosTabButton {
                             width: tabs.width / 5
-                            text: root.testnetMode ? "Setup" : "Create"
+                            text: root.testnetMode ? "1  Setup" : "Create"
                         }
                         LogosTabButton {
                             width: tabs.width / 5
-                            text: root.testnetMode ? "Treasury" : "Propose"
+                            text: root.testnetMode ? "2  Treasury" : "Propose"
                         }
-                        LogosTabButton { width: tabs.width / 5; text: "Approve" }
                         LogosTabButton {
                             width: tabs.width / 5
-                            text: root.testnetMode ? "Execute" : "Rotate"
+                            text: root.testnetMode ? "3  Approve" : "Approve"
                         }
-                        LogosTabButton { width: tabs.width / 5; text: "State" }
+                        LogosTabButton {
+                            width: tabs.width / 5
+                            text: root.testnetMode ? "4  Execute" : "Rotate"
+                        }
+                        LogosTabButton {
+                            width: tabs.width / 5
+                            text: root.testnetMode ? "5  State" : "State"
+                        }
                     }
 
                     Rectangle {
@@ -510,22 +705,6 @@ Rectangle {
                                 }
 
                                 RowLayout {
-                                    visible: root.testnetMode
-                                    spacing: Theme.spacing.small
-
-                                    LogosButton {
-                                        text: "Check RPC"
-                                        radius: Theme.spacing.radiusMedium
-                                        enabled: root.canRun
-                                        Layout.preferredWidth: 112
-                                        Layout.preferredHeight: 40
-                                        onClicked: root.runNetwork(
-                                            "network-health", "health", [], false)
-                                    }
-
-                                }
-
-                                RowLayout {
                                     Layout.fillWidth: true
                                     spacing: Theme.spacing.medium
 
@@ -564,63 +743,48 @@ Rectangle {
                                 }
 
                                 PrimaryButton {
-                                    text: root.testnetMode ? "Prepare state" : "Create multisig"
+                                    Layout.preferredWidth: root.testnetMode ? 200 : implicitWidth
+                                    text: root.testnetMode
+                                          ? "Prepare private state"
+                                          : "Create multisig"
                                     enabled: root.canRun
                                     onClicked: {
                                         if (root.testnetMode) {
-                                            root.runNetwork(
-                                                "network-prepare",
-                                                "prepare",
-                                                ["--threshold", String(thresholdSpinner.value),
-                                                 "--members", String(memberSpinner.value),
-                                                 "--funding", "750",
-                                                 "--transfer", "250"],
-                                                false)
+                                            root.prepareTestnetState()
                                         } else {
                                             root.run(
                                                 "create",
                                                 ["create",
                                                  "--threshold", String(thresholdSpinner.value),
                                                  "--members", String(memberSpinner.value),
-                                                 "--tiers", '[{"id":1,"threshold":'
-                                                            + String(thresholdSpinner.value)
-                                                            + ',"max_amount":1000}]'])
+                                                 "--tiers", "[{\"id\":1,\"threshold\":" + String(thresholdSpinner.value) + ",\"max_amount\":1000}]"])
                                         }
                                     }
                                 }
 
-                                RowLayout {
+                                GridLayout {
                                     visible: root.testnetMode
-                                    spacing: Theme.spacing.small
+                                    Layout.fillWidth: true
+                                    columns: width >= 520 ? 2 : 1
+                                    columnSpacing: Theme.spacing.small
+                                    rowSpacing: Theme.spacing.small
 
-                                    LogosButton {
-                                        text: "Verify gate"
-                                        radius: Theme.spacing.radiusMedium
-                                        enabled: root.canRun
-                                        Layout.preferredWidth: 112
+                                    LogosComboBox {
+                                        id: setupAction
+                                        Layout.fillWidth: true
                                         Layout.preferredHeight: 40
-                                        onClicked: root.runNetwork(
-                                            "network-deployment", "deployment", [], false)
-                                    }
-
-                                    LogosButton {
-                                        text: publicWriteCheck.checked ? "Submit gate" : "Prepare gate"
-                                        radius: Theme.spacing.radiusMedium
-                                        enabled: root.canRun
-                                        Layout.preferredWidth: 132
-                                        Layout.preferredHeight: 40
-                                        onClicked: root.runNetwork(
-                                            "network-deploy", "deploy", [], true)
+                                        model: [
+                                            "Verify deployed gate",
+                                            "Initialize treasury"
+                                        ]
+                                        currentIndex: 0
                                     }
 
                                     PrimaryButton {
-                                        text: publicWriteCheck.checked
-                                              ? "Submit constitution"
-                                              : "Prepare constitution"
+                                        Layout.fillWidth: true
+                                        text: root.setupActionLabel()
                                         enabled: root.canRun
-                                        implicitWidth: 188
-                                        onClicked: root.runNetwork(
-                                            "network-initialize", "initialize", [], true)
+                                        onClicked: root.runSetupAction()
                                     }
                                 }
                             }
@@ -679,6 +843,7 @@ Rectangle {
                                 }
 
                                 RowLayout {
+                                    visible: !root.testnetMode
                                     Layout.fillWidth: true
                                     spacing: Theme.spacing.medium
 
@@ -723,68 +888,39 @@ Rectangle {
                                          "--tier", String(tierSpinner.value)])
                                 }
 
+                                LogosText {
+                                    visible: root.testnetMode
+                                    text: "750 funded  /  250 transfer  /  tier 1"
+                                    color: Theme.palette.textSecondary
+                                    font.pixelSize: Theme.typography.secondaryText
+                                }
+
                                 GridLayout {
-                                    id: treasuryActions
                                     visible: root.testnetMode
                                     Layout.fillWidth: true
                                     columns: width >= 520 ? 2 : 1
                                     columnSpacing: Theme.spacing.small
                                     rowSpacing: Theme.spacing.small
 
-                                    LogosButton {
+                                    LogosComboBox {
+                                        id: treasuryAction
                                         Layout.fillWidth: true
-                                        text: publicWriteCheck.checked ? "Submit token" : "Prepare token"
-                                        radius: Theme.spacing.radiusMedium
-                                        enabled: root.canRun
                                         Layout.preferredHeight: 40
-                                        onClicked: root.runNetwork(
-                                            "network-token", "create-token", [], true)
-                                    }
-
-                                    LogosButton {
-                                        Layout.fillWidth: true
-                                        text: publicWriteCheck.checked
-                                              ? "Submit recipient"
-                                              : "Prepare recipient"
-                                        radius: Theme.spacing.radiusMedium
-                                        enabled: root.canRun
-                                        Layout.preferredHeight: 40
-                                        onClicked: root.runNetwork(
-                                            "network-recipient", "initialize-recipient", [], true)
-                                    }
-
-                                    LogosButton {
-                                        Layout.fillWidth: true
-                                        text: publicWriteCheck.checked ? "Submit vault" : "Prepare vault"
-                                        radius: Theme.spacing.radiusMedium
-                                        enabled: root.canRun
-                                        Layout.preferredHeight: 40
-                                        onClicked: root.runNetwork(
-                                            "network-vault", "initialize-vault", [], true)
-                                    }
-
-                                    LogosButton {
-                                        Layout.fillWidth: true
-                                        text: publicWriteCheck.checked ? "Submit funding" : "Prepare funding"
-                                        radius: Theme.spacing.radiusMedium
-                                        enabled: root.canRun
-                                        Layout.preferredHeight: 40
-                                        onClicked: root.runNetwork(
-                                            "network-fund", "fund", [], true)
+                                        model: [
+                                            "Create token",
+                                            "Initialize recipient",
+                                            "Initialize vault",
+                                            "Fund vault",
+                                            "Open proposal"
+                                        ]
+                                        currentIndex: 0
                                     }
 
                                     PrimaryButton {
-                                        Layout.columnSpan: treasuryActions.columns
                                         Layout.fillWidth: true
-                                        text: publicWriteCheck.checked
-                                              ? "Submit proposal"
-                                              : "Prepare proposal"
+                                        text: root.treasuryActionLabel()
                                         enabled: root.canRun
-                                        onClicked: root.runNetwork(
-                                            "network-propose",
-                                            "propose",
-                                            [],
-                                            true)
+                                        onClicked: root.runTreasuryAction()
                                     }
                                 }
                             }
