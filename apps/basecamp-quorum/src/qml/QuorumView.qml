@@ -31,6 +31,7 @@ Rectangle {
                                              && root.outputValue("proposal_status") === "Active"
     property bool ready: false
     property bool testnetSessionAssigned: false
+    property bool testnetStatePrepared: false
     property string lastRequestedOperation: ""
     property bool lastRequestSubmitted: false
     property bool deploymentReady: false
@@ -164,6 +165,7 @@ Rectangle {
         testnetWorkingDirectoryField.text = sessionDirectory
         root.backend.configureWorkingDirectory(sessionDirectory)
         root.testnetSessionAssigned = true
+        root.testnetStatePrepared = false
         publicWriteCheck.checked = false
         root.setupStep = 0
         root.deploymentReady = false
@@ -220,6 +222,8 @@ Rectangle {
     }
 
     function updateTestnetProgress(output) {
+        root.testnetStatePrepared = (output || "").indexOf(
+            "multisig=Public/") >= 0
         root.deploymentReady = root.transactionConfirmed(output, "deploy")
         root.constitutionReady = (output || "").indexOf(
             "constitution_status=initialized") >= 0
@@ -393,6 +397,8 @@ Rectangle {
             if (success && root.testnetMode) {
                 if (root.lastRequestedOperation === "network-status") {
                     root.updateTestnetProgress(output)
+                } else if (root.lastRequestedOperation === "network-prepare") {
+                    root.testnetStatePrepared = true
                 } else if (root.lastRequestedOperation === "network-deployment") {
                     root.deploymentReady = true
                     root.setupStep = 1
@@ -829,9 +835,13 @@ Rectangle {
                                 PrimaryButton {
                                     Layout.preferredWidth: root.testnetMode ? 200 : implicitWidth
                                     text: root.testnetMode
-                                          ? "Prepare private state"
+                                          ? (root.testnetStatePrepared
+                                             ? "Private state ready"
+                                             : "Prepare private state")
                                           : "Create multisig"
                                     enabled: root.canRun
+                                             && (!root.testnetMode
+                                                 || !root.testnetStatePrepared)
                                     onClicked: {
                                         if (root.testnetMode) {
                                             root.prepareTestnetState()
