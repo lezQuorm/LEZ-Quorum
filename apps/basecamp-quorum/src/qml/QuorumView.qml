@@ -33,6 +33,11 @@ Rectangle {
     property bool testnetSessionAssigned: false
     property string lastRequestedOperation: ""
     property bool lastRequestSubmitted: false
+    readonly property real workflowTabWidth: Math.max(
+        96,
+        (Math.min(Math.max(0, root.width - Theme.spacing.xxlarge), 1280)
+         - (root.width >= 980 ? 364 : 0)
+         - Theme.spacing.large * 2) / 5)
 
     function isHex64(value) {
         return /^[0-9a-fA-F]{64}$/.test((value || "").trim())
@@ -135,12 +140,13 @@ Rectangle {
                                + root.sessionTimestamp()
 
         testnetWorkingDirectoryField.text = sessionDirectory
-        root.testnetSessionAssigned = root.backend.configureWorkingDirectory(sessionDirectory)
+        root.backend.configureWorkingDirectory(sessionDirectory)
+        root.testnetSessionAssigned = true
         publicWriteCheck.checked = false
         setupAction.currentIndex = 0
         treasuryAction.currentIndex = 0
         tabs.currentIndex = 0
-        return root.testnetSessionAssigned
+        return true
     }
 
     function prepareTestnetState() {
@@ -218,16 +224,14 @@ Rectangle {
     function run(label, args) {
         if (!root.canRun)
             return false
-        const started = root.backend.startConfigured(
+        root.lastRequestedOperation = label
+        root.lastRequestSubmitted = args.indexOf("--confirm-public-write") >= 0
+        root.backend.startConfigured(
             label,
             args,
             binaryField.text,
             root.testnetMode ? testnetWorkingDirectoryField.text : workingDirectoryField.text)
-        if (started) {
-            root.lastRequestedOperation = label
-            root.lastRequestSubmitted = args.indexOf("--confirm-public-write") >= 0
-        }
-        return started
+        return true
     }
 
     function networkArguments(command, args, publicWrite) {
@@ -414,12 +418,12 @@ Rectangle {
                 enabled: root.canRun
 
                 LogosTabButton {
-                    width: modeTabs.width / 2
+                    width: root.width >= 760 ? 115 : 95
                     text: "Local"
                 }
 
                 LogosTabButton {
-                    width: modeTabs.width / 2
+                    width: root.width >= 760 ? 115 : 95
                     text: "LEZ Testnet"
                 }
             }
@@ -613,7 +617,7 @@ Rectangle {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
-            columns: width >= 760 ? 2 : 1
+            columns: width >= 980 ? 2 : 1
             columnSpacing: Theme.spacing.large
             rowSpacing: Theme.spacing.large
 
@@ -643,23 +647,23 @@ Rectangle {
                         enabled: root.ready
 
                         LogosTabButton {
-                            width: tabs.width / 5
+                            width: root.workflowTabWidth
                             text: root.testnetMode ? "1  Setup" : "Create"
                         }
                         LogosTabButton {
-                            width: tabs.width / 5
+                            width: root.workflowTabWidth
                             text: root.testnetMode ? "2  Treasury" : "Propose"
                         }
                         LogosTabButton {
-                            width: tabs.width / 5
+                            width: root.workflowTabWidth
                             text: root.testnetMode ? "3  Approve" : "Approve"
                         }
                         LogosTabButton {
-                            width: tabs.width / 5
+                            width: root.workflowTabWidth
                             text: root.testnetMode ? "4  Execute" : "Rotate"
                         }
                         LogosTabButton {
-                            width: tabs.width / 5
+                            width: root.workflowTabWidth
                             text: root.testnetMode ? "5  State" : "State"
                         }
                     }
