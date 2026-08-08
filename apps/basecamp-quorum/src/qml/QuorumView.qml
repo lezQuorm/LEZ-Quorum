@@ -33,6 +33,8 @@ Rectangle {
     property bool testnetSessionAssigned: false
     property string lastRequestedOperation: ""
     property bool lastRequestSubmitted: false
+    property bool deploymentReady: false
+    property int setupStep: 0
     property bool constitutionReady: false
     property bool proposalReady: false
     property int treasuryStep: 0
@@ -163,7 +165,8 @@ Rectangle {
         root.backend.configureWorkingDirectory(sessionDirectory)
         root.testnetSessionAssigned = true
         publicWriteCheck.checked = false
-        setupAction.currentIndex = 0
+        root.setupStep = 0
+        root.deploymentReady = false
         root.constitutionReady = false
         root.proposalReady = false
         root.treasuryStep = 0
@@ -185,16 +188,20 @@ Rectangle {
     }
 
     function runSetupAction() {
-        if (setupAction.currentIndex === 0) {
+        if (root.setupStep === 0) {
             return root.runNetwork(
                 "network-deployment", "deployment", [], false)
+        }
+        if (!root.deploymentReady) {
+            root.setupStep = 0
+            return false
         }
         return root.runNetwork(
             "network-initialize", "initialize", [], true)
     }
 
     function setupActionLabel() {
-        if (setupAction.currentIndex === 0)
+        if (root.setupStep === 0)
             return "Verify deployment"
         return publicWriteCheck.checked
              ? "Submit initialization"
@@ -213,11 +220,10 @@ Rectangle {
     }
 
     function updateTestnetProgress(output) {
+        root.deploymentReady = root.transactionConfirmed(output, "deploy")
         root.constitutionReady = (output || "").indexOf(
             "constitution_status=initialized") >= 0
-        if (root.constitutionReady
-                || (output || "").indexOf("transaction=initialize ") >= 0)
-            setupAction.currentIndex = 1
+        root.setupStep = root.deploymentReady ? 1 : 0
 
         const labels = [
             "create-token",
@@ -273,7 +279,7 @@ Rectangle {
     function runTreasuryAction() {
         if (!root.constitutionReady) {
             tabs.currentIndex = 0
-            setupAction.currentIndex = 1
+            root.setupStep = root.deploymentReady ? 1 : 0
             return false
         }
         if (root.treasuryStep >= 5) {
@@ -388,7 +394,8 @@ Rectangle {
                 if (root.lastRequestedOperation === "network-status") {
                     root.updateTestnetProgress(output)
                 } else if (root.lastRequestedOperation === "network-deployment") {
-                    setupAction.currentIndex = 1
+                    root.deploymentReady = true
+                    root.setupStep = 1
                 } else if (root.lastRequestSubmitted
                            && root.lastRequestedOperation === "network-initialize") {
                     root.constitutionReady = true
@@ -850,17 +857,20 @@ Rectangle {
                                         id: setupAction
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 40
+                                        enabled: false
                                         model: [
                                             "Verify deployed gate",
                                             "Initialize treasury"
                                         ]
-                                        currentIndex: 0
+                                        currentIndex: root.setupStep
                                     }
 
                                     PrimaryButton {
                                         Layout.fillWidth: true
                                         text: root.setupActionLabel()
                                         enabled: root.canRun
+                                                 && (root.setupStep === 0
+                                                     || root.deploymentReady)
                                         onClicked: root.runSetupAction()
                                     }
                                 }
