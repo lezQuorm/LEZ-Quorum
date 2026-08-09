@@ -484,7 +484,9 @@ Rectangle {
                     }
                 } else if (root.lastRequestSubmitted
                            && root.lastRequestedOperation === "network-approve") {
-                    tabs.currentIndex = 3
+                    const approvals = root.outputNumber("approvals")
+                    const required = root.outputNumber("required_approvals")
+                    tabs.currentIndex = required > 0 && approvals >= required ? 3 : 2
                 } else if (root.lastRequestSubmitted
                            && root.lastRequestedOperation === "network-execute") {
                     tabs.currentIndex = 4
@@ -1173,7 +1175,7 @@ Rectangle {
 
                                     LogosText {
                                         text: root.testnetMode
-                                              ? "Real RISC Zero proof bound to live proposal state"
+                                              ? "One real testnet transaction per private approval"
                                               : "Create a private member approval proof or execute quorum."
                                         color: Theme.palette.textSecondary
                                         font.pixelSize: Theme.typography.secondaryText

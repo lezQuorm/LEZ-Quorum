@@ -165,7 +165,7 @@ pub enum NetworkCommand {
         #[arg(long)]
         confirm_public_write: bool,
     },
-    /// Prove the remaining threshold approvals in one private transaction.
+    /// Prove and submit the next unused private member approval.
     ApproveThreshold {
         /// Proposal id.
         #[arg(long, default_value_t = 0)]
@@ -751,7 +751,13 @@ async fn approve(
     let existing = load_state(target, rpc)?;
     require_confirmed(&existing, "propose")?;
     if existing.transactions.contains_key(&label) {
-        return submit_saved(target, rpc, &label, confirm_public_write).await;
+        submit_saved(target, rpc, &label, confirm_public_write).await?;
+        if confirm_public_write {
+            let proposal = sync_proposal(target, rpc).await?;
+            println!("approvals={}", proposal.nullifiers.len());
+            println!("required_approvals={}", proposal.threshold);
+        }
+        return Ok(());
     }
 
     let (state, secrets) = load_all(target, rpc)?;
@@ -825,7 +831,9 @@ async fn approve(
     )
     .await?;
     if confirmed {
-        sync_proposal(target, rpc).await?;
+        let proposal = sync_proposal(target, rpc).await?;
+        println!("approvals={}", proposal.nullifiers.len());
+        println!("required_approvals={}", proposal.threshold);
     }
     Ok(())
 }
@@ -839,25 +847,13 @@ async fn approve_threshold(
     if proposal_id != 0 {
         return Err("the prepared demo lifecycle supports proposal 0 only".to_owned());
     }
-    let label = format!("approve-{proposal_id}-threshold");
     let existing = load_state(target, rpc)?;
     require_confirmed(&existing, "propose")?;
-    if existing.transactions.contains_key(&label) {
-        return submit_saved(target, rpc, &label, confirm_public_write).await;
-    }
 
     let (state, secrets) = load_all(target, rpc)?;
     let client = client(rpc)?;
     let multisig_id = account_id(state.accounts.multisig);
     let proposal_account_id = account_id(state.accounts.proposal);
-    let constitution_account = client
-        .get_account(multisig_id)
-        .await
-        .map_err(|error| error.to_string())?;
-    let proposal_account = client
-        .get_account(proposal_account_id)
-        .await
-        .map_err(|error| error.to_string())?;
     let constitution = client
         .get_constitution(multisig_id)
         .await
@@ -872,58 +868,11 @@ async fn approve_threshold(
         return Err("proposal is not active".to_owned());
     }
 
-    let member_indexes = pending_member_indexes(&proposal, &constitution, &secrets)?;
-    let approving_members = member_indexes
-        .iter()
-        .map(|index| secrets.members[*index].clone())
-        .collect::<Vec<_>>();
-    let member_refs = approving_members.iter().collect::<Vec<_>>();
-    let claim_path = target
-        .state_dir()
-        .join(CLAIMS_DIR)
-        .join(format!("claim-{proposal_id}-threshold.json"));
-    let proof = if let Some(proof) = load_saved_claim(&claim_path, &constitution, &proposal)? {
-        print_proof_progress("threshold", "reusing verified threshold receipt");
-        proof
-    } else {
-        let mut mirror = Multisig {
-            constitution: constitution.clone(),
-            proposals: vec![proposal.clone()],
-        };
-        print_proof_progress(
-            "threshold",
-            &format!(
-                "proving {} remaining approvals in one receipt",
-                member_refs.len()
-            ),
-        );
-        let proof = mirror
-            .approve_many(proposal_id, &state.commitments, &member_refs)
-            .map_err(|error| error.to_string())?;
-        write_json(&claim_path, &proof)?;
-        proof
-    };
-
-    let composed = compose_network_approval(
-        &state,
-        &member_refs,
-        constitution_account,
-        proposal_account,
-        proposal_id,
-        &proof,
-    )?;
-    let confirmed = write_transaction(
-        target,
-        rpc,
-        &label,
-        LeeTransaction::PrivacyPreserving(composed.transaction),
-        confirm_public_write,
-    )
-    .await?;
-    if confirmed {
-        sync_proposal(target, rpc).await?;
-    }
-    Ok(())
+    let member_index = pending_member_indexes(&proposal, &constitution, &secrets)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "no unused local member is available".to_owned())?;
+    approve(target, rpc, member_index, proposal_id, confirm_public_write).await
 }
 
 fn load_saved_claim(
@@ -1317,7 +1266,10 @@ async fn sync_constitution(target: NetworkTarget, rpc: &str) -> Result<(), Strin
     save_state(target, &state)
 }
 
-async fn sync_proposal(target: NetworkTarget, rpc: &str) -> Result<(), String> {
+async fn sync_proposal(
+    target: NetworkTarget,
+    rpc: &str,
+) -> Result<quorum_gate_core::ProposalState, String> {
     let mut state = load_state(target, rpc)?;
     let client = client(rpc)?;
     let proposal = client
@@ -1325,8 +1277,9 @@ async fn sync_proposal(target: NetworkTarget, rpc: &str) -> Result<(), String> {
         .await
         .map_err(|error| error.to_string())?;
     validate_proposal(&state, &proposal)?;
-    upsert_proposal(&mut state.multisig, proposal)?;
-    save_state(target, &state)
+    upsert_proposal(&mut state.multisig, proposal.clone())?;
+    save_state(target, &state)?;
+    Ok(proposal)
 }
 
 async fn verify_final_state(target: NetworkTarget, rpc: &str) -> Result<(), String> {
