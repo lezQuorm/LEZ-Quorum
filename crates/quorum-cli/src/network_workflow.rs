@@ -849,6 +849,16 @@ async fn approve_threshold(
     }
     let existing = load_state(target, rpc)?;
     require_confirmed(&existing, "propose")?;
+    let legacy_label = format!("approve-{proposal_id}-threshold");
+    if existing.transactions.contains_key(&legacy_label) {
+        submit_saved(target, rpc, &legacy_label, confirm_public_write).await?;
+        if confirm_public_write {
+            let proposal = sync_proposal(target, rpc).await?;
+            println!("approvals={}", proposal.nullifiers.len());
+            println!("required_approvals={}", proposal.threshold);
+        }
+        return Ok(());
+    }
 
     let (state, secrets) = load_all(target, rpc)?;
     let client = client(rpc)?;
