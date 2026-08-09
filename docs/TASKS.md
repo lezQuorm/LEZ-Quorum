@@ -1,6 +1,6 @@
 # Tasks
 
-Updated 2026-08-07.
+Updated 2026-08-09.
 
 ## Complete
 
@@ -19,12 +19,12 @@ Updated 2026-08-07.
 
 ## Demo Delivery
 
-- [ ] Record the demo using the public testnet state.
-- [ ] Review the recording for exposed secrets before publishing it.
-- [ ] Add the final video URL to PR #120.
+- [x] Record the demo using the public testnet state.
+- [x] Review the recording for exposed secrets before publishing it.
+- [x] Add the final video URL to PR #120.
 
-All engineering and testnet-readiness work is complete. An independent
-security audit is scheduled before production use and does not block the demo.
+All engineering, testnet-readiness, and demo-delivery work is complete. An
+independent security audit is scheduled before production use.
 
 Never show `.quorum-testnet/`, recovery phrases, passwords, member secrets,
 Merkle paths, claims, or private account material.
