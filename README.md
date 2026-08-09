@@ -6,9 +6,9 @@ member list or linking approvals to named members.
 
 ## Demo
 
-[![Watch the Quorum LEZ testnet demo](docs/assets/quorum-demo-preview.png)](docs/assets/quorum-demo.mp4?raw=1)
+[![Watch the Quorum LEZ testnet demo](docs/assets/quorum-demo-preview.png)](docs/assets/quorum-demo.mp4)
 
-[Watch the full LEZ testnet demo (11:20, MP4)](docs/assets/quorum-demo.mp4?raw=1)
+[Watch the full LEZ testnet demo (11:20, MP4)](docs/assets/quorum-demo.mp4)
 
 The project targets LEZ v0.2.2. It is experimental and has not received an
 independent security audit.
