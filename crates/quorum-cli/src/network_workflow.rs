@@ -264,6 +264,7 @@ enum TransactionStatus {
     Submitted,
     Unknown,
     Confirmed,
+    Orphaned,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -533,6 +534,7 @@ async fn status(target: NetworkTarget, rpc: &str) -> Result<(), String> {
         .get_last_block_id()
         .await
         .map_err(|error| error.to_string())?;
+    let orphaned = refresh_transaction_statuses(&client, &mut state).await?;
     println!("rpc_status=healthy");
     println!("target={}", target.label());
     println!(
@@ -540,6 +542,12 @@ async fn status(target: NetworkTarget, rpc: &str) -> Result<(), String> {
         state.network_id.as_deref().unwrap_or("unknown")
     );
     println!("block={block}");
+    if orphaned.is_empty() {
+        println!("journal_status=consistent");
+    } else {
+        println!("journal_status=orphaned");
+        println!("orphaned_transactions={}", orphaned.join(","));
+    }
     println!("gate_program_id={}", program_id_hex(QUORUM_GATE_ID));
     print_account_ids(&state.accounts);
 
@@ -598,8 +606,8 @@ async fn initialize(
     rpc: &str,
     confirm_public_write: bool,
 ) -> Result<(), String> {
+    require_live_confirmation(target, rpc, "deploy").await?;
     let (state, secrets) = load_all(target, rpc)?;
-    require_confirmed(&state, "deploy")?;
     let accounts = lifecycle_accounts(&state, &secrets)?;
     let transaction = lifecycle::initialize_constitution(
         &accounts,
@@ -623,8 +631,8 @@ async fn create_token(
     rpc: &str,
     confirm_public_write: bool,
 ) -> Result<(), String> {
+    require_live_confirmation(target, rpc, "initialize").await?;
     let (state, secrets) = load_all(target, rpc)?;
-    require_confirmed(&state, "initialize")?;
     let accounts = lifecycle_accounts(&state, &secrets)?;
     let transaction = lifecycle::create_token(
         &accounts,
@@ -650,8 +658,8 @@ async fn initialize_recipient(
     rpc: &str,
     confirm_public_write: bool,
 ) -> Result<(), String> {
+    require_live_confirmation(target, rpc, "create-token").await?;
     let (state, secrets) = load_all(target, rpc)?;
-    require_confirmed(&state, "create-token")?;
     let accounts = lifecycle_accounts(&state, &secrets)?;
     let transaction =
         lifecycle::initialize_recipient(&accounts, Nonce(0)).map_err(|error| error.to_string())?;
@@ -671,8 +679,8 @@ async fn initialize_vault(
     rpc: &str,
     confirm_public_write: bool,
 ) -> Result<(), String> {
+    require_live_confirmation(target, rpc, "initialize-recipient").await?;
     let (state, secrets) = load_all(target, rpc)?;
-    require_confirmed(&state, "initialize-recipient")?;
     let accounts = lifecycle_accounts(&state, &secrets)?;
     let client = client(rpc)?;
     let nonce = one_nonce(&client, accounts.multisig.id).await?;
@@ -690,8 +698,8 @@ async fn initialize_vault(
 }
 
 async fn fund(target: NetworkTarget, rpc: &str, confirm_public_write: bool) -> Result<(), String> {
+    require_live_confirmation(target, rpc, "initialize-vault").await?;
     let (state, secrets) = load_all(target, rpc)?;
-    require_confirmed(&state, "initialize-vault")?;
     let accounts = lifecycle_accounts(&state, &secrets)?;
     let client = client(rpc)?;
     let nonce = one_nonce(&client, accounts.supply.id).await?;
@@ -706,8 +714,8 @@ async fn propose(
     rpc: &str,
     confirm_public_write: bool,
 ) -> Result<(), String> {
+    require_live_confirmation(target, rpc, "fund").await?;
     let (state, secrets) = load_all(target, rpc)?;
-    require_confirmed(&state, "fund")?;
     if !state.multisig.proposals.is_empty() {
         return Err("this prepared lifecycle already has a proposal".to_owned());
     }
@@ -748,8 +756,8 @@ async fn approve(
         return Err("the prepared demo lifecycle supports proposal 0 only".to_owned());
     }
     let label = format!("approve-{proposal_id}-{member_index}");
+    require_live_confirmation(target, rpc, "propose").await?;
     let existing = load_state(target, rpc)?;
-    require_confirmed(&existing, "propose")?;
     if existing.transactions.contains_key(&label) {
         submit_saved(target, rpc, &label, confirm_public_write).await?;
         if confirm_public_write {
@@ -847,8 +855,8 @@ async fn approve_threshold(
     if proposal_id != 0 {
         return Err("the prepared demo lifecycle supports proposal 0 only".to_owned());
     }
+    require_live_confirmation(target, rpc, "propose").await?;
     let existing = load_state(target, rpc)?;
-    require_confirmed(&existing, "propose")?;
     let legacy_label = format!("approve-{proposal_id}-threshold");
     if existing.transactions.contains_key(&legacy_label) {
         submit_saved(target, rpc, &legacy_label, confirm_public_write).await?;
@@ -1005,8 +1013,8 @@ async fn execute(
     if proposal_id != 0 {
         return Err("the prepared demo lifecycle supports proposal 0 only".to_owned());
     }
+    require_live_confirmation(target, rpc, "propose").await?;
     let (state, secrets) = load_all(target, rpc)?;
-    require_confirmed(&state, "propose")?;
     let client = client(rpc)?;
     let proposal = client
         .get_proposal(account_id(state.accounts.proposal))
@@ -1099,24 +1107,20 @@ async fn submit_saved(
         .get(label)
         .cloned()
         .ok_or_else(|| format!("transaction {label} is not prepared"))?;
-    if record.status == TransactionStatus::Confirmed {
-        println!("transaction_status=confirmed");
-        println!("transaction_hash={}", record.hash);
-        println!("confirmation_block={}", record.block.unwrap_or_default());
-        save_state(target, &state)?;
-        return Ok(());
-    }
-
     let hash = parse_hash(&record.hash)?;
-    if let Some((_, block)) = client
-        .get_transaction(hash)
-        .await
-        .map_err(|error| error.to_string())?
-    {
+    if let Some(block) = locate_saved_transaction(&client, &record).await? {
         mark_confirmed(&mut state, label, block)?;
         save_state(target, &state)?;
         print_confirmation(label, hash, block);
         return Ok(());
+    }
+    let missing_status = mark_not_found(&mut state, label)?;
+    if missing_status == TransactionStatus::Orphaned {
+        save_state(target, &state)?;
+        return Err(format!(
+            "transaction {label} was confirmed locally but is absent from the current chain; start a fresh {} session",
+            target.label()
+        ));
     }
     if record.status != TransactionStatus::Prepared {
         save_state(target, &state)?;
@@ -1208,15 +1212,30 @@ async fn reconcile(
             .cloned()
             .ok_or_else(|| format!("transaction {label} disappeared"))?;
         let hash = parse_hash(&record.hash)?;
-        if let Some((_, block)) = find_transaction(&client, hash).await? {
+        if let Some(block) = locate_saved_transaction(&client, &record).await? {
             mark_confirmed(&mut state, &label, block)?;
             print_confirmation(&label, hash, block);
             continue;
         }
+        let missing_status = mark_not_found(&mut state, &label)?;
         println!("transaction_label={label}");
         println!("transaction_hash={hash}");
-        println!("transaction_status=not_found");
+        println!(
+            "transaction_status={}",
+            if missing_status == TransactionStatus::Orphaned {
+                "orphaned"
+            } else {
+                "not_found"
+            }
+        );
         if resubmit {
+            if missing_status == TransactionStatus::Orphaned {
+                save_state(target, &state)?;
+                return Err(format!(
+                    "refusing to resubmit orphaned transaction {label}; start a fresh {} session",
+                    target.label()
+                ));
+            }
             let returned = client
                 .submit_transaction(record.transaction)
                 .await
@@ -1241,6 +1260,89 @@ async fn reconcile(
         }
     }
     save_state(target, &state)
+}
+
+async fn refresh_transaction_statuses(
+    client: &NetworkClient,
+    state: &mut NetworkState,
+) -> Result<Vec<String>, String> {
+    let labels = state.transactions.keys().cloned().collect::<Vec<_>>();
+    let mut orphaned = Vec::new();
+    for label in labels {
+        let record = state
+            .transactions
+            .get(&label)
+            .cloned()
+            .ok_or_else(|| format!("transaction {label} disappeared"))?;
+        if let Some(block) = locate_saved_transaction(client, &record).await? {
+            mark_confirmed(state, &label, block)?;
+        } else if mark_not_found(state, &label)? == TransactionStatus::Orphaned {
+            orphaned.push(label);
+        }
+    }
+    Ok(orphaned)
+}
+
+async fn require_live_confirmation(
+    target: NetworkTarget,
+    rpc: &str,
+    label: &str,
+) -> Result<(), String> {
+    let mut state = load_state(target, rpc)?;
+    let client = client(rpc)?;
+    bind_network(&client, &mut state).await?;
+    let record = state
+        .transactions
+        .get(label)
+        .cloned()
+        .ok_or_else(|| format!("{label} must be confirmed first"))?;
+    if let Some(block) = locate_saved_transaction(&client, &record).await? {
+        mark_confirmed(&mut state, label, block)?;
+        save_state(target, &state)?;
+        return Ok(());
+    }
+
+    let missing_status = mark_not_found(&mut state, label)?;
+    save_state(target, &state)?;
+    if missing_status == TransactionStatus::Orphaned {
+        Err(format!(
+            "{label} confirmation is orphaned: transaction {} is absent from the current chain; start a fresh {} session",
+            record.hash,
+            target.label()
+        ))
+    } else {
+        Err(format!(
+            "{label} must be confirmed on the current chain first"
+        ))
+    }
+}
+
+async fn locate_saved_transaction(
+    client: &NetworkClient,
+    record: &TransactionRecord,
+) -> Result<Option<u64>, String> {
+    let hash = parse_hash(&record.hash)?;
+    let Some((transaction, block)) = find_transaction(client, hash).await? else {
+        return Ok(None);
+    };
+    if transaction != record.transaction {
+        return Err(format!(
+            "transaction {} does not match the saved journal bytes",
+            record.hash
+        ));
+    }
+    Ok(Some(block))
+}
+
+fn mark_not_found(state: &mut NetworkState, label: &str) -> Result<TransactionStatus, String> {
+    let record = state
+        .transactions
+        .get_mut(label)
+        .ok_or_else(|| format!("transaction {label} disappeared"))?;
+    if record.status == TransactionStatus::Confirmed {
+        record.status = TransactionStatus::Orphaned;
+    }
+    Ok(record.status)
 }
 
 async fn find_transaction(
@@ -1450,13 +1552,6 @@ async fn one_nonce(client: &NetworkClient, id: AccountId) -> Result<Nonce, Strin
         return Err("sequencer returned an unexpected nonce count".to_owned());
     }
     Ok(nonces.remove(0))
-}
-
-fn require_confirmed(state: &NetworkState, label: &str) -> Result<(), String> {
-    match state.transactions.get(label) {
-        Some(record) if record.status == TransactionStatus::Confirmed => Ok(()),
-        _ => Err(format!("{label} must be confirmed first")),
-    }
 }
 
 fn lifecycle_accounts(
@@ -1770,5 +1865,46 @@ mod tests {
             constitution.version,
         ));
         assert!(pending_member_indexes(&proposal, &constitution, &secrets).is_err());
+    }
+
+    #[test]
+    fn missing_confirmation_is_marked_orphaned() {
+        let (mut state, _) = prepared_state();
+        state.transactions.insert(
+            "deploy".to_owned(),
+            TransactionRecord {
+                hash: lifecycle::deploy_gate().hash().to_string(),
+                transaction: lifecycle::deploy_gate(),
+                status: TransactionStatus::Confirmed,
+                block: Some(42),
+            },
+        );
+
+        assert_eq!(
+            mark_not_found(&mut state, "deploy").unwrap(),
+            TransactionStatus::Orphaned
+        );
+        let record = state.transactions.get("deploy").unwrap();
+        assert_eq!(record.status, TransactionStatus::Orphaned);
+        assert_eq!(record.block, Some(42));
+    }
+
+    #[test]
+    fn missing_prepared_transaction_remains_resubmittable() {
+        let (mut state, _) = prepared_state();
+        state.transactions.insert(
+            "deploy".to_owned(),
+            TransactionRecord {
+                hash: lifecycle::deploy_gate().hash().to_string(),
+                transaction: lifecycle::deploy_gate(),
+                status: TransactionStatus::Prepared,
+                block: None,
+            },
+        );
+
+        assert_eq!(
+            mark_not_found(&mut state, "deploy").unwrap(),
+            TransactionStatus::Prepared
+        );
     }
 }

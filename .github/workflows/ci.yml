@@ -4,20 +4,31 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-Dwarnings"
+  CARGO_BUILD_JOBS: "2"
 
 jobs:
   check:
     name: fmt · clippy · tests
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RUSTFLAGS: "-Dwarnings"
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.91.0
         with:
           components: clippy, rustfmt
 
@@ -42,24 +53,86 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Format
-        run: cargo fmt --check
+        run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Tests (dev-mode proofs for speed; real proofs gated by RISC0_DEV_MODE=0)
-        run: RISC0_DEV_MODE=1 cargo test --workspace
+        run: RISC0_DEV_MODE=1 cargo test --workspace --all-targets --all-features -- --test-threads=1
+
+  sequencer-e2e:
+    name: standalone LEZ sequencer lifecycle
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out pinned LEZ v0.2.2
+        uses: actions/checkout@v4
+        with:
+          repository: logos-blockchain/logos-execution-zone
+          ref: d6e4ae694e7419f5906b340c232704466a1917b7
+          path: .ci/logos-execution-zone
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          components: clippy, rustfmt
+
+      - name: Install LEZ build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential clang libclang-dev libssl-dev pkg-config
+
+      - name: Cache Risc0 toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-risczero
+            ~/.rustup/toolchains/risc0
+            ~/.rustup/update-hashes/risc0
+          key: risc0-3.0.5-rust-1.97.0-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install Risc0 toolchain (pinned)
+        run: |
+          if ! cargo risczero --version 2>/dev/null | grep -Fq '3.0.5'; then
+            cargo install cargo-risczero --version 3.0.5 --locked
+          fi
+          if ! rustc +risc0 --version 2>/dev/null | grep -Fq '1.97.0'; then
+            cargo risczero install --version 1.97.0
+          fi
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run standalone sequencer E2E
+        env:
+          LEZ_REPO: ${{ github.workspace }}/.ci/logos-execution-zone
+          LEZ_TARGET_DIR: ${{ github.workspace }}/target/lez-v0.2.2
+          RISC0_DEV_MODE: "1"
+        run: ./scripts/sequencer-e2e.sh
+
+      - name: Upload sequencer logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-sequencer-logs
+          path: target/e2e-logs
+          if-no-files-found: warn
+          retention-days: 7
 
   real-proof:
     name: real threshold proof (RISC0_DEV_MODE=0)
     runs-on: ubuntu-latest
     needs: check
     if: github.ref == 'refs/heads/main'
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.91.0
         with:
           components: clippy, rustfmt
 

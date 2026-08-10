@@ -26,10 +26,12 @@ Rectangle {
     readonly property bool testnetMode: modeTabs.currentIndex === 1
     readonly property string lastOutput: root.backend ? (root.backend.lastOutput || "") : ""
     readonly property string activityTransactionHash: root.confirmedTransactionHash()
+    readonly property string liveProposalStatus: root.outputValue("proposal_status")
     readonly property bool liveThresholdMet: root.outputNumber("approvals")
                                                 >= root.outputNumber("required_approvals")
                                              && root.outputNumber("required_approvals") > 0
-                                             && root.outputValue("proposal_status") === "Active"
+                                             && (root.liveProposalStatus.length === 0
+                                                 || root.liveProposalStatus === "Active")
     property bool ready: false
     property bool testnetSessionAssigned: false
     property bool testnetStatePrepared: false

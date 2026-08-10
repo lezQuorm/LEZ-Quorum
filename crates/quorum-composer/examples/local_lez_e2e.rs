@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{ensure, Context as _, Result};
 use common::transaction::LeeTransaction;
@@ -12,10 +12,10 @@ use quorum_circuit::{
     evaluate, ActionData, MemberApprovalWitness, ThresholdJournal, ThresholdWitness,
 };
 use quorum_composer::{
-    compose_private_approval,
+    compose_private_approval_with_progress,
     lifecycle::{self, LifecycleAccounts, LifecycleSeeds},
     network::NetworkClient,
-    PrivateApprovalRequest,
+    PrivateApprovalPhase, PrivateApprovalRequest,
 };
 use quorum_core::{merkle::MemberTree, nullifier::member_commitment_for_credential};
 use quorum_gate_core::{decode_constitution, decode_proposal, ProposalStatus, TierPolicy};
@@ -253,7 +253,13 @@ async fn submit_private_approval(
     credential_ids: &[[u8; 32]],
     credential_secrets: &[[u8; 32]; 2],
 ) -> Result<()> {
+    println!("proof_phase=threshold");
+    let threshold_started = Instant::now();
     let proof = prove_threshold(witness)?;
+    println!(
+        "threshold_proof_seconds={:.3}",
+        threshold_started.elapsed().as_secs_f64()
+    );
     let multisig_state = client.get_account(accounts.multisig.id).await?;
     let proposal_state = client.get_account(accounts.proposal.id).await?;
     let mut pre_states = vec![
@@ -265,7 +271,8 @@ async fn submit_private_approval(
             .iter()
             .map(|id| AccountWithMetadata::new(Account::default(), true, AccountId::new(*id))),
     );
-    let composed = compose_private_approval(
+    let private_started = Instant::now();
+    let composed = compose_private_approval_with_progress(
         PrivateApprovalRequest {
             programs: lifecycle::gate_program()?.into(),
             pre_states,
@@ -282,7 +289,20 @@ async fn submit_private_approval(
             proposal_id: 0,
         },
         &proof,
+        |phase| {
+            println!(
+                "proof_phase={}",
+                match phase {
+                    PrivateApprovalPhase::GateProgram => "gate",
+                    PrivateApprovalPhase::PrivacyCircuit => "privacy",
+                }
+            );
+        },
     )?;
+    println!(
+        "private_approval_proof_seconds={:.3}",
+        private_started.elapsed().as_secs_f64()
+    );
     let hash = client.submit_and_confirm(composed.transaction).await?;
     println!("approve_tx={hash}");
 
