@@ -1767,10 +1767,20 @@ mod tests {
     }
 
     #[test]
-    fn gate_program_id_uses_canonical_byte_order() {
+    fn program_id_hex_uses_canonical_byte_order() {
+        let words = [
+            0x0302_0100,
+            0x0706_0504,
+            0x0b0a_0908,
+            0x0f0e_0d0c,
+            0x1312_1110,
+            0x1716_1514,
+            0x1b1a_1918,
+            0x1f1e_1d1c,
+        ];
         assert_eq!(
-            program_id_hex(QUORUM_GATE_ID),
-            "f84e14137c10cd3c7261f98d675ae7fcbe6cf8f8448ecd2f82dd8b7234ce98ec"
+            program_id_hex(words),
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
         );
     }
 
