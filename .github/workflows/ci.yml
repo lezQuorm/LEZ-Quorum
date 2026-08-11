@@ -25,7 +25,7 @@ jobs:
     env:
       RUSTFLAGS: "-Dwarnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.91.0
@@ -33,9 +33,10 @@ jobs:
           components: clippy, rustfmt
 
       - name: Cache Risc0 toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
+            ~/.risc0
             ~/.cargo/bin/cargo-risczero
             ~/.rustup/toolchains/risc0
             ~/.rustup/update-hashes/risc0
@@ -43,11 +44,14 @@ jobs:
 
       - name: Install Risc0 toolchain (pinned)
         run: |
+          if [[ ! -x "$HOME/.risc0/bin/rzup" ]]; then
+            curl -L https://risczero.com/install | bash
+          fi
           if ! cargo risczero --version 2>/dev/null | grep -Fq '3.0.5'; then
-            cargo install cargo-risczero --version 3.0.5 --locked
+            "$HOME/.risc0/bin/rzup" install cargo-risczero 3.0.5
           fi
           if ! rustc +risc0 --version 2>/dev/null | grep -Fq '1.97.0'; then
-            cargo risczero install --version 1.97.0
+            "$HOME/.risc0/bin/rzup" install rust 1.97.0
           fi
 
       - uses: Swatinem/rust-cache@v2
@@ -67,10 +71,10 @@ jobs:
     needs: check
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check out pinned LEZ v0.2.2
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: logos-blockchain/logos-execution-zone
           ref: d6e4ae694e7419f5906b340c232704466a1917b7
@@ -87,9 +91,10 @@ jobs:
           sudo apt-get install --yes build-essential clang libclang-dev libssl-dev pkg-config
 
       - name: Cache Risc0 toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
+            ~/.risc0
             ~/.cargo/bin/cargo-risczero
             ~/.rustup/toolchains/risc0
             ~/.rustup/update-hashes/risc0
@@ -97,11 +102,14 @@ jobs:
 
       - name: Install Risc0 toolchain (pinned)
         run: |
+          if [[ ! -x "$HOME/.risc0/bin/rzup" ]]; then
+            curl -L https://risczero.com/install | bash
+          fi
           if ! cargo risczero --version 2>/dev/null | grep -Fq '3.0.5'; then
-            cargo install cargo-risczero --version 3.0.5 --locked
+            "$HOME/.risc0/bin/rzup" install cargo-risczero 3.0.5
           fi
           if ! rustc +risc0 --version 2>/dev/null | grep -Fq '1.97.0'; then
-            cargo risczero install --version 1.97.0
+            "$HOME/.risc0/bin/rzup" install rust 1.97.0
           fi
 
       - uses: Swatinem/rust-cache@v2
@@ -115,7 +123,7 @@ jobs:
 
       - name: Upload sequencer logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: standalone-sequencer-logs
           path: target/e2e-logs
@@ -129,7 +137,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.91.0
@@ -137,9 +145,10 @@ jobs:
           components: clippy, rustfmt
 
       - name: Cache Risc0 toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
+            ~/.risc0
             ~/.cargo/bin/cargo-risczero
             ~/.rustup/toolchains/risc0
             ~/.rustup/update-hashes/risc0
@@ -147,11 +156,14 @@ jobs:
 
       - name: Install Risc0 toolchain (pinned)
         run: |
+          if [[ ! -x "$HOME/.risc0/bin/rzup" ]]; then
+            curl -L https://risczero.com/install | bash
+          fi
           if ! cargo risczero --version 2>/dev/null | grep -Fq '3.0.5'; then
-            cargo install cargo-risczero --version 3.0.5 --locked
+            "$HOME/.risc0/bin/rzup" install cargo-risczero 3.0.5
           fi
           if ! rustc +risc0 --version 2>/dev/null | grep -Fq '1.97.0'; then
-            cargo risczero install --version 1.97.0
+            "$HOME/.risc0/bin/rzup" install rust 1.97.0
           fi
 
       - uses: Swatinem/rust-cache@v2
