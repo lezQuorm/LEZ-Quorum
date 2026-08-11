@@ -239,7 +239,6 @@ mod tests {
         let next = c.rotate(new_root, 4).unwrap();
         assert_eq!(next.version, 2);
         assert_ne!(next.member_root, c.member_root);
-        // Old root no longer valid: a member of the old set has no path in new tree.
         assert_ne!(next.member_root, old);
     }
 

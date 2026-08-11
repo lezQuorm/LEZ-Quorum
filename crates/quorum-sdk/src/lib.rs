@@ -373,7 +373,6 @@ impl Multisig {
             proposal_id,
             constitution_version: self.constitution.version,
         };
-        // Sanity: the witness must satisfy the statement before any proving.
         evaluate(&witness).map_err(quorum_prover::ProverError::InvalidWitness)?;
 
         let proof = prove_witness(&witness)?;
@@ -428,7 +427,6 @@ impl Multisig {
             proposal_id,
             constitution_version: self.constitution.version,
         };
-        // Sanity: the witness must satisfy the statement before any proving.
         evaluate(&witness).map_err(quorum_prover::ProverError::InvalidWitness)?;
 
         let proof = prove_witness(&witness)?;
@@ -589,7 +587,6 @@ mod tests {
         let commitments = commitments_of(&set);
         let id = multisig.propose(transfer()).unwrap();
 
-        // First approval only.
         let proof1 = multisig
             .approve(id, &commitments, set.member(0).unwrap())
             .unwrap();
@@ -597,7 +594,6 @@ mod tests {
         assert!(multisig.proposals[id as usize].nullifiers.len() == 1);
         assert!(!multisig.proposals[id as usize].threshold_met());
 
-        // Second approval reaches threshold.
         let proof2 = multisig
             .approve(id, &commitments, set.member(1).unwrap())
             .unwrap();
@@ -686,7 +682,6 @@ mod tests {
 
         assert_eq!(multisig.constitution.version, 2);
         assert_eq!(multisig.constitution.member_root, new_root);
-        // Old member (index 2) is gone: their proof fails against the new root.
         let old_set = MemberSet::from_secrets(&secrets(3));
         let old = old_set.member(2).unwrap();
         let w = MemberSet::from_secrets(&[old.secret])
@@ -719,8 +714,6 @@ mod tests {
             }],
         )
         .unwrap();
-        // Caller tries to inflate the cap — the SDK replaces it with the
-        // constitution's authoritative cap.
         let id = multisig
             .propose(ActionData::Transfer {
                 recipient: [9; 32],
@@ -756,7 +749,6 @@ mod tests {
         let members: Vec<&Member> = vec![set.member(0).unwrap(), set.member(1).unwrap()];
         let proof = multisig.approve_many(id, &commitments, &members).unwrap();
 
-        // ONE receipt proves BOTH approvals.
         assert_eq!(proof.journal.approval_count, 2);
         assert_eq!(proof.journal.required_threshold, 2);
         assert_eq!(proof.journal.nullifiers.len(), 2);

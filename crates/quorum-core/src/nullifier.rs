@@ -166,13 +166,9 @@ mod tests {
 
     #[test]
     fn nullifier_does_not_leak_secret_bits() {
-        // A nullifier is a hash of the secret: flipping one secret byte must
-        // avalanche the output and never expose the secret trivially.
         let a = derive_nullifier(&[1u8; 32], 1, 1);
         let b = derive_nullifier(&[2u8; 32], 1, 1);
         assert_ne!(a, b);
-        // The hash output must differ in more than the corresponding byte
-        // (i.e. it is not an identity permutation of the secret).
         assert_ne!(a[0] ^ b[0], 3, "avalanche sanity");
     }
 

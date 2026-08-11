@@ -225,9 +225,7 @@ mod tests {
         let new_tree = MemberTree::new(&[keep, newcomer]);
 
         assert_ne!(old_tree.root(), new_tree.root());
-        // The removed member's commitment is not in the new tree.
         assert!(new_tree.proof_for(&old).is_none());
-        // The keeper still has a valid proof in both.
         let p = new_tree.proof_for(&keep).unwrap();
         assert!(p.verifies(&leaf_hash(&keep), &new_tree.root()));
         let _ = old_tree;

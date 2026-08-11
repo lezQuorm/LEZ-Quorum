@@ -97,7 +97,6 @@ fn full_flow_with_aggregated_approval() {
         ],
     );
 
-    // One aggregated proof for both members.
     let stdout = run_ok(
         &dir,
         &["approve-all", "--proposal", "0", "--members", "0,1"],
@@ -154,7 +153,6 @@ fn per_member_approval_and_double_vote_rejection() {
     );
     assert!(dir.join("claims").join("claim-0-0.json").exists());
 
-    // Same member twice → deterministic double-vote rejection.
     let stdout = run_err(&dir, &["approve", "--member", "0", "--proposal", "0"]);
     assert!(
         stdout.contains("duplicate nullifier") || stdout.contains("1005"),
@@ -199,7 +197,6 @@ fn rotated_member_key_is_dead() {
     run_ok(&dir, &["approve", "--member", "1", "--proposal", "0"]);
     run_ok(&dir, &["execute", "--proposal", "0"]);
 
-    // Rotate to a fresh random 2-member set.
     let stdout = run_ok(&dir, &["new-root", "--members", "2"]);
     let new_root = stdout.trim();
     run_ok(
@@ -221,7 +218,6 @@ fn rotated_member_key_is_dead() {
     let stdout = run_ok(&dir, &["info"]);
     assert!(stdout.contains("constitution v2"), "info output: {stdout}");
 
-    // A member of the OLD set can no longer approve (no valid Merkle path).
     run_ok(
         &dir,
         &[
@@ -242,8 +238,6 @@ fn rotated_member_key_is_dead() {
         "expected invalid-membership rejection, got: {stdout}"
     );
 
-    // Activation is only allowed after the generated root is active. The new
-    // members can then approve a fresh proposal under constitution v2.
     run_ok(&dir, &["activate-rotation"]);
     assert!(!dir.join("member-2.json").exists());
     run_ok(

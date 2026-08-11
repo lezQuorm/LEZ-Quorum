@@ -119,7 +119,6 @@ impl Proposal {
                 new_member_root,
                 new_member_count,
             } => {
-                // Delegates to the same checks as `Constitution::rotate`.
                 let _ = constitution.rotate(*new_member_root, *new_member_count)?;
             }
             ProposalKind::ChangeThreshold { new_threshold } => {
@@ -309,7 +308,6 @@ mod tests {
             0,
         );
         assert!(p.validate_against(&c).is_ok());
-        // Rotating down below threshold must be rejected at validation time.
         let bad = Proposal::new(
             2,
             ProposalKind::RotateMembers {

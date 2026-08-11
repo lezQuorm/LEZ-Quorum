@@ -907,7 +907,6 @@ mod tests {
         assert_eq!(proposal.nullifiers.len(), 1);
         assert!(!proposal.threshold_met());
 
-        // Second member approves.
         let secrets = secrets(3);
         let commitments: Vec<[u8; 32]> = secrets.iter().map(member_commitment).collect();
         let tree = MemberTree::new(&commitments);
@@ -943,7 +942,6 @@ mod tests {
         let (_, j) = witness();
         let check = check_claim(&c, &proposal, &OnChainThresholdJournal::from(&j)).unwrap();
         apply_approved_claim(&mut proposal, &check).unwrap();
-        // Same member (same nullifier) cannot approve again.
         let check2 = check_claim(&c, &proposal, &OnChainThresholdJournal::from(&j)).unwrap_err();
         assert_eq!(check2, GateError::DuplicateNullifier);
     }
@@ -953,7 +951,6 @@ mod tests {
         let mut c = constitution();
         let mut proposal = ProposalState::new(c.multisig_id, 1, c.version, 2, transfer_action());
         let (_, j) = witness();
-        // Rotate the constitution — the proof is now stale.
         let secrets = secrets(4);
         let commitments: Vec<[u8; 32]> = secrets.iter().map(member_commitment).collect();
         c.rotate(MemberTree::new(&commitments).root(), 4).unwrap();
@@ -988,7 +985,6 @@ mod tests {
         apply_action(&mut c, &proposal).unwrap();
         assert_eq!(c.version, 2);
         assert_eq!(c.member_root, new_root);
-        // The old member's marker under the OLD threshold differs → unclaimed proof.
         let old_marker = marker_pda([0; 8], THRESHOLD_IMAGE_ID, 2);
         let new_marker = marker_pda([0; 8], THRESHOLD_IMAGE_ID, 2);
         assert_eq!(old_marker, new_marker); // same threshold → same marker
@@ -1005,8 +1001,6 @@ mod tests {
     #[test]
     fn tier_cap_mismatch_rejected_on_chain() {
         let c = constitution();
-        // A malicious proposer + approver agree on an inflated cap; the gate
-        // must still reject it against the constitution's authoritative cap.
         let inflated_action = ActionData::Transfer {
             recipient: [9; 32],
             amount: 500,

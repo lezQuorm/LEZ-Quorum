@@ -343,7 +343,6 @@ mod tests {
         let fields = value.as_object().unwrap();
         assert!(!fields.contains_key("approvals"));
         assert!(!fields.contains_key("member_secret"));
-        // No full 64-char secret hex string may appear anywhere in the JSON.
         for approval in &witness.approvals {
             let full = approval
                 .member_secret
