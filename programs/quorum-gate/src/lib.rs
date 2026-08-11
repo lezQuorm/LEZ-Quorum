@@ -1,4 +1,17 @@
-include!(concat!(env!("OUT_DIR"), "/methods.rs"));
+/// Exact gate ELF deployed to LEZ testnet; pinned so its program ID is host-independent.
+pub const QUORUM_GATE_ELF: &[u8] = include_bytes!("../artifacts/quorum_gate.bin");
+pub const QUORUM_GATE_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/artifacts/quorum_gate.bin");
+pub const QUORUM_GATE_ID: [u32; 8] = [
+    320_098_040,
+    1_020_072_060,
+    2_381_930_866,
+    4_243_020_391,
+    4_177_030_334,
+    802_000_452,
+    1_921_768_834,
+    3_969_437_236,
+];
 
 #[cfg(test)]
 mod tests {

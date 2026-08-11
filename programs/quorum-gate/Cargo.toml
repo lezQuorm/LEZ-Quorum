@@ -6,9 +6,6 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[build-dependencies]
-risc0-build.workspace = true
-
 [dev-dependencies]
 spel-framework = { git = "https://github.com/FidelCoder/spel.git", rev = "1fef85203c3130676a49aaed1b4387d16be9fe94" }
 spel-framework-core = { git = "https://github.com/FidelCoder/spel.git", rev = "1fef85203c3130676a49aaed1b4387d16be9fe94", features = ["idl-gen"] }

@@ -5427,7 +5427,6 @@ name = "quorum-gate-methods"
 version = "0.1.0"
 dependencies = [
  "quorum-gate-core",
- "risc0-build",
  "risc0-zkvm",
  "spel-client-gen",
  "spel-framework",
@@ -5478,9 +5477,6 @@ dependencies = [
 [[package]]
 name = "quorum-threshold-methods"
 version = "0.1.0"
-dependencies = [
- "risc0-build",
-]
 
 [[package]]
 name = "quote"

@@ -9,10 +9,14 @@
 | Explorer | `https://explorer.testnet.lez.logos.co` |
 | Network ID | `0101010101010101010101010101010101010101010101010101010101010101` |
 | Gate program | `f84e14137c10cd3c7261f98d675ae7fcbe6cf8f8448ecd2f82dd8b7234ce98ec` |
+| Gate ELF SHA-256 | `72351623f9a703c40736ab5645b047d39b3c5b688f2c2c47302cf62d1762fd3b` |
+| Threshold ELF SHA-256 | `7533ba0608cf00b1eb8b8b57d259d3594ff1d886acc33e9696ae57726ee951df` |
 | Deployment | [`4635b013...c24b43`](https://explorer.testnet.lez.logos.co/transaction/4635b013b5d3c1b2b4f3d50af938808be839727a90bd293de2ba799b83c24b43) at [block `693`](https://explorer.testnet.lez.logos.co/block/693) |
 
 The sequencer's direct transaction index no longer returns the old deployment.
 Quorum reads retained block `693` and matches the deployed bytecode exactly.
+The tracked gate and threshold ELFs are the immutable artifacts used by builds and CI.
+Guest changes require reviewed replacement artifacts and new deployment evidence.
 
 ## Verified Lifecycle
 
