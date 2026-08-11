@@ -1,6 +1,6 @@
 # Quorum
 
-[![CI](https://github.com/FidelCoder/LEZ-Quorum/actions/workflows/ci.yml/badge.svg)](https://github.com/FidelCoder/LEZ-Quorum/actions/workflows/ci.yml)
+[![CI](https://github.com/lezQuorm/LEZ-Quorum/actions/workflows/ci.yml/badge.svg)](https://github.com/lezQuorm/LEZ-Quorum/actions/workflows/ci.yml)
 
 Quorum is a private M-of-N treasury for Logos Execution Zone (LEZ). Members
 approve transfers, rotations, and threshold changes without publishing the
@@ -8,9 +8,9 @@ member list or linking approvals to named members.
 
 ## Demo
 
-[![Watch the Quorum LEZ testnet demo](docs/assets/quorum-demo-preview.png)](https://cdn.jsdelivr.net/gh/FidelCoder/LEZ-Quorum@6dcfa74d2310152c04485f8fd72728a462c4e832/docs/assets/quorum-demo.mp4)
+[![Watch the Quorum LEZ testnet demo](docs/assets/quorum-demo-preview.png)](https://cdn.jsdelivr.net/gh/lezQuorm/LEZ-Quorum@6dcfa74d2310152c04485f8fd72728a462c4e832/docs/assets/quorum-demo.mp4)
 
-[Watch the full LEZ testnet demo (11:20, MP4)](https://cdn.jsdelivr.net/gh/FidelCoder/LEZ-Quorum@6dcfa74d2310152c04485f8fd72728a462c4e832/docs/assets/quorum-demo.mp4)
+[Watch the full LEZ testnet demo (11:20, MP4)](https://cdn.jsdelivr.net/gh/lezQuorm/LEZ-Quorum@6dcfa74d2310152c04485f8fd72728a462c4e832/docs/assets/quorum-demo.mp4)
 
 The recording shows a real-proof testnet lifecycle from an earlier network
 state. That state was reset and is not current deployment evidence.
