@@ -54,6 +54,21 @@ RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets --all-features -- -D war
 RISC0_DEV_MODE=1 cargo test --workspace --all-targets --all-features -- --test-threads=1
 ```
 
+Verify that the committed program artifacts match the deployment record:
+
+```bash
+sha256sum \
+  guests/quorum-threshold/artifacts/threshold.bin \
+  programs/quorum-gate/artifacts/quorum_gate.bin
+```
+
+Expected output:
+
+```text
+7533ba0608cf00b1eb8b8b57d259d3594ff1d886acc33e9696ae57726ee951df  guests/quorum-threshold/artifacts/threshold.bin
+72351623f9a703c40736ab5645b047d39b3c5b688f2c2c47302cf62d1762fd3b  programs/quorum-gate/artifacts/quorum_gate.bin
+```
+
 ## Testnet Commands
 
 Read network state:
@@ -79,6 +94,18 @@ with `--confirm-public-write` to submit it.
 Testnet state is stored in `.quorum-testnet/`. Keep that directory, member
 files, claims, passwords, and recovery phrases private.
 
+The deployed gate can be checked without writing:
+
+```bash
+env -u RISC0_DEV_MODE target/release/quorum network \
+  --target testnet deployment \
+  --transaction 4635b013b5d3c1b2b4f3d50af938808be839727a90bd293de2ba799b83c24b43
+```
+
+This confirms the recorded transaction against the testnet RPC. It does not
+rebuild or redeploy the program. A new deployment must publish a new program
+ID, artifact hashes, transaction, and lifecycle evidence.
+
 ## Local Sequencer
 
 ```bash
@@ -91,3 +118,47 @@ For a faster development run:
 RISC0_DEV_MODE=1 LEZ_REPO=../../logos-execution-zone-v022 \
   ./scripts/sequencer-e2e.sh
 ```
+
+The script rejects any LEZ checkout other than commit
+`d6e4ae694e7419f5906b340c232704466a1917b7`. With no
+`RISC0_DEV_MODE` override it uses real proofs, checks
+`proof_mode=real`, and allows four hours. Development mode is the CI-fast path
+and reports `proof_mode=development`.
+
+## Reproduce From A Clean Checkout
+
+```bash
+git clone --branch v0.2.2 --depth 1 \
+  https://github.com/logos-blockchain/logos-execution-zone.git \
+  logos-execution-zone-v022
+git clone https://github.com/lezQuorm/LEZ-Quorum.git
+cd LEZ-Quorum
+
+cargo fmt --all -- --check
+RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets --all-features -- -D warnings
+RISC0_DEV_MODE=1 cargo test --workspace --all-targets --all-features -- --test-threads=1
+LEZ_REPO=../logos-execution-zone-v022 ./scripts/sequencer-e2e.sh
+```
+
+The last command is intentionally the real-proof path. For a short functional
+rehearsal, prefix it with `RISC0_DEV_MODE=1`.
+
+## CI Evidence
+
+[CI run 31474959072](https://github.com/lezQuorm/LEZ-Quorum/actions/runs/31474959072)
+passed formatting, strict Clippy, workspace tests, the pinned standalone
+sequencer lifecycle, and a real 2-of-3 threshold proof. The standalone CI job
+uses development receipts for runtime; the separate real-proof job supplies
+the cryptographic evidence. These modes are labeled independently so a fast
+integration test cannot be mistaken for a production proof.
+
+Local revalidation for 0.1.1 on 2026-09-10 also passed the complete 104-test
+development-mode suite and both development- and real-proof standalone
+sequencer lifecycles. The real run explicitly reported `proof_mode=real`,
+confirmed the private approval and execution, and ended with `RESULT=PASS` and
+`SEQUENCER_E2E=PASS` after `5620` seconds. A separate real 2-of-3 threshold
+receipt also passed host verification. See [Benchmarks](BENCHMARKS.md) for the
+local proof measurements.
+
+See [Benchmarks](BENCHMARKS.md) for proof time and compute units and
+[Integration](INTEGRATION.md) for the full two-step network command sequence.

@@ -21,3 +21,6 @@
 
 # Testnet evidence scratch
 /evidence/tmp/
+
+# Private demo preparation (kept local; do not publish)
+/docs/DEMO_RUNBOOK.md

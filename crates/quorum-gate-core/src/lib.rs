@@ -12,9 +12,8 @@
 //!   threshold — *"threshold reached" without recording who approved*.
 //! - **Restart-safe**: partial approvals (< M) live in on-chain proposal state;
 //!   a client crash loses nothing.
-//! - **Rotation** applies a new member root; a **marker-PDA** derived from the
-//!   verifier image ID + enforced threshold gives on-chain evidence of what the
-//!   gate demanded (the LP-0005 winning evidence trick).
+//! - **Rotation** applies a new member root and increments the constitution
+//!   version, so proofs and proposals bound to the old member set are rejected.
 
 pub use quorum_circuit::{ActionData, ThresholdJournal};
 use quorum_core::nullifier::credential_commitment_from_account_id;
@@ -746,13 +745,11 @@ pub enum QuorumInstruction {
     InitializeVault,
 }
 
-/// Derives the marker PDA that proves *on-chain* what the gate demanded.
+/// Derives an experimental marker address from a program, image, and threshold.
 ///
-/// `marker_pda(program_id, image_id, threshold)` — the LP-0005 evidence trick
-/// applied to Quorum: re-derive under a **different** threshold and the PDA
-/// lands on an unclaimed address, proving the chain enforced the actual
-/// threshold. After a rotation, re-deriving under the **old** threshold yields
-/// an unclaimed PDA — on-chain proof that the old member set is dead.
+/// The deployed gate does not create this account. It is retained as a tested
+/// derivation helper for a possible future evidence-account design and must not
+/// be treated as deployment evidence for the current protocol.
 #[must_use]
 pub fn marker_pda(program_id: [u32; 8], image_id: [u32; 8], threshold: u8) -> [u8; 32] {
     let mut bytes = Vec::with_capacity(32 + 32 + 32 + 1);

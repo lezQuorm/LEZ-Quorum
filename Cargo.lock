@@ -3059,7 +3059,7 @@ dependencies = [
 
 [[package]]
 name = "lez-compat"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "lee_core",
  "serde",
@@ -5337,7 +5337,7 @@ dependencies = [
 
 [[package]]
 name = "quorum-circuit"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "borsh",
  "quorum-core",
@@ -5348,7 +5348,7 @@ dependencies = [
 
 [[package]]
 name = "quorum-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "common",
@@ -5372,7 +5372,7 @@ dependencies = [
 
 [[package]]
 name = "quorum-composer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5401,7 +5401,7 @@ dependencies = [
 
 [[package]]
 name = "quorum-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "lez-compat",
  "sha2",
@@ -5409,7 +5409,7 @@ dependencies = [
 
 [[package]]
 name = "quorum-gate-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "borsh",
  "lez-compat",
@@ -5424,7 +5424,7 @@ dependencies = [
 
 [[package]]
 name = "quorum-gate-methods"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "quorum-gate-core",
  "risc0-zkvm",
@@ -5436,11 +5436,11 @@ dependencies = [
 
 [[package]]
 name = "quorum-image-id"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "quorum-prover"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "bincode",
@@ -5456,7 +5456,7 @@ dependencies = [
 
 [[package]]
 name = "quorum-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bincode",
  "lee_core",
@@ -5476,7 +5476,7 @@ dependencies = [
 
 [[package]]
 name = "quorum-threshold-methods"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "quote"

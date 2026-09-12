@@ -11,8 +11,9 @@
 //!   under the LEE v0.3 protocol commitment prefix used by LEZ v0.2.2.
 //! - Membership in a committed set is proven with a **Merkle proof** over
 //!   commitment leaves (`leaf = SHA256(commitment)`, `node = SHA256(l||r)`).
-//! - The **nonce** and **`program_owner`** constraints that break the public
-//!   multisig `PoC` are documented and enforced here (see [`rules`]).
+//! - The **nonce** and **`program_owner`** constraints relevant to private
+//!   accounts are documented and modeled here (see [`rules`]). Their runtime
+//!   enforcement belongs to the outer LEZ privacy proof and sequencer.
 //!
 //! The commitment format is verified against the official LEZ v0.2.2 dummy
 //! commitment constants, exactly as in `LEZ-TokenStudio/lez-compat`.

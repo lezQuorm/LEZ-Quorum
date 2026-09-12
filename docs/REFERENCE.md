@@ -1,84 +1,116 @@
 # Technical Reference
 
-## Compute Units
+This page is a compact index of compatibility constants and persisted formats.
+Design rationale lives in the focused documents linked at the end.
 
-LEZ v0.2.2 reports Risc0 `user_cycles`. Measurements use LEZ commit
-`d6e4ae694e7419f5906b340c232704466a1917b7`, one warmup, and three runs.
+## Pinned Versions
 
-| Operation | Guest execution | User cycles |
-|---|---|---:|
-| Deploy gate | No guest execution | N/A |
-| Initialize constitution | Quorum gate | 75,173 |
-| Create token | LEZ token | 97,284 |
-| Initialize recipient | LEZ token | 104,491 |
-| Initialize vault | Gate 217,755 + token 104,491 | 322,246 |
-| Fund vault | LEZ token transfer | 128,649 |
-| Propose transfer | Quorum gate | 154,336 |
-| Approve one member | Quorum gate | 300,267 |
-| Execute transfer | Gate 371,170 + token 128,649 | 499,819 |
-| Propose member rotation | Quorum gate | 150,486 |
-| Execute member rotation | Quorum gate | 307,506 |
-| Propose threshold change | Quorum gate | 132,404 |
-| Execute threshold change | Quorum gate | 292,096 |
+| Dependency | Version or commit |
+|---|---|
+| Host Rust | `1.91.0` |
+| Risc0 crate and CLI | `3.0.5` |
+| Risc0 guest Rust | `1.97.0` |
+| LEZ | `v0.2.2`, `d6e4ae694e7419f5906b340c232704466a1917b7` |
+| Basecamp builder | Locked by `apps/basecamp-quorum/flake.lock` |
 
-Reproduce the measurements:
+## Limits
 
-```bash
-RISC0_DEV_MODE=1 cargo run --release -p quorum-composer \
-  --example compute_units
+| Constant | Value |
+|---|---:|
+| Maximum members / approvals per receipt | 10 |
+| Maximum spending tiers | 8 |
+| Viewing public key length | 1184 bytes |
+| Constitution state schema | 1 |
+| Proposal state schema | 1 |
+
+Every constitution requires `1 <= threshold <= member_count <= 10`. Tier IDs
+must be unique and each tier threshold must be within the member count.
+
+## Cryptographic Domains
+
+| Purpose | Prefix or formula |
+|---|---|
+| Quorum base | `quorum/v1` |
+| Approval nullifier | `SHA256("quorum/v1/nullifier" || secret || proposal_le64 || version_le32)` |
+| Member commitment | `SHA256("quorum/v1/member" || private_account_id)` |
+| Credential binding | `SHA256("quorum/v1/credential" || account_id || root || proposal_le64 || version_le32)` |
+| Vault seed | `SHA256("quorum/vault/v1" || multisig_account_id)` |
+| LEZ commitment | `/LEE/v0.3/Commitment/` padded to 32 bytes |
+| LEZ private account ID | `/LEE/v0.3/AccountId/Private/` padded to 32 bytes |
+
+The LEE v0.3 strings identify the upstream protocol serialization used by LEZ
+v0.2.2; they are not a mismatch in the application version.
+
+## Merkle Rules
+
+```text
+commitments are lexicographically sorted
+leaf = SHA256(member_commitment)
+node = SHA256(left || right)
+an unpaired final node is duplicated
 ```
 
-Development mode supplies the receipt assumption used by the approval fixture.
-It does not change the guest instruction trace or `user_cycles`. Client proof
-time is separate from program compute units.
+These rules are implemented in `crates/quorum-core/src/merkle.rs` and tested
+against membership, non-membership, odd-level, and rotation cases.
 
-## Proof Statement
+## Actions
 
-Each approval proves:
+| Action | Public fields | Execution |
+|---|---|---|
+| Transfer | recipient, amount, tier ID, state-derived tier cap | Chained call from vault to LEZ token program |
+| Rotate members | new root and member count | Replace root/count and increment version |
+| Change threshold | new threshold | Replace threshold and increment version |
 
-1. control of an enrolled private credential;
-2. membership under the current member root;
-3. binding to the proposal, action, and constitution version; and
-4. a unique proposal-scoped nullifier.
+The canonical deployed action type is `quorum_circuit::ActionData`, re-exported
+by `quorum-gate-core`.
 
-The gate verifies the receipt, rejects duplicate nullifiers, and records the
-approval. Execution checks the threshold and calls the LEZ token program for a
-transfer.
+## Program Interface
 
-## Transaction Safety
+| Instruction | Accounts and purpose |
+|---|---|
+| `initialize` | Claims the multisig state with root, threshold, count, and tiers |
+| `initialize_vault` | Creates the deterministic token holding through a chained call |
+| `propose` | Claims proposal state and binds an action to current version |
+| `approve` | Verifies receipt assumption and private credential bindings |
+| `execute` | Applies an approved action once and marks proposal executed |
 
-Transactions are saved before submission. A confirmation is accepted only when
-the sequencer returns the same hash and transaction bytes. Missing confirmed
-transactions become `Orphaned` and block dependent actions.
-
-Gate errors `4001` through `4017` are defined in
-`crates/quorum-gate-core/src/lib.rs` and exported in
+The generated machine-readable interface is
 `programs/quorum-gate/idl/quorum_gate.idl.json`.
 
-## CI
+## Local Files
 
-[Run 31466516663](https://github.com/lezQuorm/LEZ-Quorum/actions/runs/31466516663)
-passed:
+The standalone state CLI writes `quorum.json`, `member-<index>.json`, optional
+`rotation.json`, and `claims/` in its current working directory. The network
+workflow writes:
 
-- formatting, strict Clippy, and workspace tests;
-- the standalone LEZ v0.2.2 sequencer lifecycle; and
-- a real 2-of-3 threshold proof with `RISC0_DEV_MODE=0`.
+| Target | Directory |
+|---|---|
+| Local sequencer | `.quorum-network-local/` |
+| Public testnet | `.quorum-testnet/` |
 
-The real threshold proof took `675.542 s`, produced a `224,866` byte receipt,
-and passed host verification. The sequencer lifecycle ended with
-`RESULT=PASS`.
+Network state includes public configuration, protected secret material, and a
+transaction journal. Records transition through `Prepared`, `Submitted`,
+`Unknown`, `Confirmed`, or `Orphaned`. Secret-bearing paths are Git-ignored but
+not encrypted.
 
-Run the same checks locally:
+## Artifacts
 
-```bash
-cargo fmt --all -- --check
-RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets --all-features -- -D warnings
-RISC0_DEV_MODE=1 cargo test --workspace --all-targets --all-features -- --test-threads=1
-LEZ_REPO=../../logos-execution-zone-v022 ./scripts/sequencer-e2e.sh
-```
+| Artifact | SHA-256 |
+|---|---|
+| `guests/quorum-threshold/artifacts/threshold.bin` | `7533ba0608cf00b1eb8b8b57d259d3594ff1d886acc33e9696ae57726ee951df` |
+| `programs/quorum-gate/artifacts/quorum_gate.bin` | `72351623f9a703c40736ab5645b047d39b3c5b688f2c2c47302cf62d1762fd3b` |
 
-## Security
+The deployed testnet program ID is recorded in [Deployment](DEPLOYMENT.md).
+Regenerate method metadata only with the pinned Risc0 toolchain, then update
+the corresponding image-ID crates and deployment evidence together.
 
-Quorum is unaudited and should not custody assets of material value. The pinned
-upstream dependency set includes open RustSec advisories in Logos networking
-and Risc0 tooling; compatible upstream releases are required to remove them.
+## Further Reading
+
+- [Architecture](ARCHITECTURE.md)
+- [Circuit design](CIRCUIT_DESIGN.md)
+- [Privacy model](PRIVACY_MODEL.md)
+- [Security assumptions](SECURITY_ASSUMPTIONS.md)
+- [Error codes](ERROR_CODES.md)
+- [Benchmarks](BENCHMARKS.md)
+- [Integration](INTEGRATION.md)
+- [Known limitations](KNOWN_LIMITATIONS.md)
