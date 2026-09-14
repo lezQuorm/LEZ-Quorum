@@ -147,6 +147,9 @@ nix --extra-experimental-features 'nix-command flakes' run .
 `logos-module-builder`. There is no separate `module.json` in that builder
 contract. See [Basecamp integration](docs/INTEGRATION.md#basecamp).
 
+Download the validated Linux amd64 module packages and matching CLI from the
+[Quorum v0.1.1 release](https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1).
+
 ## Workspace
 
 | Path | Responsibility |

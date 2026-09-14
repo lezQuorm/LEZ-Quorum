@@ -22,7 +22,7 @@ external publication step and must be completed before the final submission.
 | Status | Criterion | Evidence |
 |---|---|---|
 | [x] | Module/SDK | `quorum-sdk`, `quorum-composer`, `quorum-cli`, and integration guide |
-| [ ] | Basecamp GUI, local build, downloadable assets, loadable in Basecamp | UI, locked native/portable builds, checksums, and an official-host module-load smoke test pass locally; the assets still need a public release and clean-download test |
+| [x] | Basecamp GUI, local build, downloadable assets, loadable in Basecamp | Locked native/portable builds and checksums pass; release [`v0.1.1`](https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1) was downloaded into a clean directory and its CLI and portable manifest validated |
 | [x] | SPEL IDL | `programs/quorum-gate/idl/quorum_gate.idl.json` plus consistency test |
 
 ## Reliability

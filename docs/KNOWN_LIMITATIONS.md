@@ -50,9 +50,9 @@ production treasury.
 
 - The Basecamp module launches `target/release/quorum` as a child process. The
   repository CLI must exist at the expected relative path.
-- Basecamp packages are locally buildable, but release assets must be uploaded
-  separately to a GitHub release; the current repository release has no
-  downloadable package attached.
+- Basecamp packages are published for Linux amd64 in release `v0.1.1`. Other
+  platforms still require a local build, and the module requires the matching
+  `quorum` CLI binary alongside the LGX package.
 - The public testnet deployment is fixed to LEZ v0.2.2 and may stop working if
   the network resets, upgrades, or removes historical state.
 - Proof generation is CPU- and memory-intensive. The recorded real 2-of-3

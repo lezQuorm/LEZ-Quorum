@@ -1,8 +1,9 @@
 # Basecamp Release 0.1.1
 
-This is the local release manifest for the documentation-complete build. The
+This is the release manifest for the documentation-complete build. The source
 files are staged under `target/release-assets/`, which is intentionally
-Git-ignored. Publishing is a separate maintainer action.
+Git-ignored. The published release is
+<https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1>.
 
 ## Build Inputs
 
@@ -82,8 +83,10 @@ ui-host --name quorum_ui --path <plugin-dir>/quorum_ui_plugin.so
 
 The bounded 60-second smoke test ended only when its timeout stopped the live
 host. There were no module-loader, QML, or unresolved-library errors. This
-validates the local build and load path; it does not replace the clean-machine
-test of the final public downloads required below.
+validates the local build and load path. The published assets were also
+downloaded into a clean temporary directory on 2026-09-14; all checksums and
+portable manifest fields matched this document, and the downloaded CLI reported
+`quorum 0.1.1`.
 
 ## Release Notes
 
@@ -99,8 +102,8 @@ material value.
 
 ## Publication
 
-After committing the final verified tree, create tag `v0.1.1` at that exact
-commit and attach:
+The `v0.1.1` release is published at
+<https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1> with:
 
 - both `.lgx` files;
 - `SHA256SUMS`; and
