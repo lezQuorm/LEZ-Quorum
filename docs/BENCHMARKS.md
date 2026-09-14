@@ -99,5 +99,14 @@ command above measures cryptographic proof generation.
 - Testnet explorer records transaction inclusion but does not expose this local
   benchmark methodology; the source example is the reproducible evidence.
 
+## Gas And Fee Boundary
+
+LEZ v0.2.2 exposes the guest execution meter as `user_cycles`. The pinned
+testnet RPC and explorer do not expose a stable per-operation gas or token-fee
+field that can be reproduced from this repository. The table above therefore
+reports the available consensus-relevant compute metric and does not present
+`user_cycles` as a gas price or fee. Operators must confirm the active network
+transaction budget and fee policy at deployment time.
+
 The CI evidence, local real-proof lifecycle, and testnet transactions are linked from
 [Deployment](DEPLOYMENT.md).

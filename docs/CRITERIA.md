@@ -37,7 +37,7 @@ external publication step and must be completed before the final submission.
 
 | Status | Criterion | Evidence |
 |---|---|---|
-| [x] | CU cost for each on-chain operation | Reproducible `user_cycles` table in `BENCHMARKS.md`, including transfer and governance paths |
+| [x] | CU cost for each on-chain operation | Reproducible `user_cycles` table in `BENCHMARKS.md`, including transfer and governance paths; the gas/fee boundary is stated explicitly there |
 
 ## Supportability
 
