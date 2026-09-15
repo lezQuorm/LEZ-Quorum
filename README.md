@@ -16,6 +16,15 @@ The deployed design combines two proofs:
 The SPEL gate binds both layers, records distinct nullifiers, and executes the
 approved action when the proposal threshold is met.
 
+## Demo
+
+Watch the [LEZ-Quorum Basecamp demo](https://www.youtube.com/watch?v=m65kwds8LOc).
+
+The recording shows setup, treasury transactions, and the start of real approval
+proof generation. Both approval confirmations and execution occurred after the
+recording ended; the [verified demo testnet evidence](docs/DEMO_TESTNET_EVIDENCE.md)
+documents the completed flow for the same session.
+
 ## Testnet Result
 
 | Field | Value |
@@ -26,8 +35,10 @@ approved action when the proposal threshold is met.
 | Deployment | [`4635b013...c24b43`](https://explorer.testnet.lez.logos.co/transaction/4635b013b5d3c1b2b4f3d50af938808be839727a90bd293de2ba799b83c24b43) |
 | Completed lifecycle | Approvals `2/2`, vault `500`, recipient `250`, proposal `Executed` |
 
-[Deployment evidence](docs/DEPLOYMENT.md) records the accounts, transaction
-hashes, blocks, program hashes, and final state for the public lifecycle.
+[Demo testnet evidence](docs/DEMO_TESTNET_EVIDENCE.md) records the accounts,
+transaction hashes, blocks, and final state for the recorded session.
+[Deployment](docs/DEPLOYMENT.md) provides artifact verification, reproduction
+instructions, and a separate historical lifecycle record.
 
 ## What Is Private
 
@@ -176,6 +187,7 @@ Download the validated Linux amd64 module packages and matching CLI from the
 - [Running Quorum in Basecamp](docs/BASECAMP_GUIDE.md)
 - [Basecamp release manifest](docs/BASECAMP_RELEASE.md)
 - [Deployment evidence](docs/DEPLOYMENT.md)
+- [Demo testnet evidence](docs/DEMO_TESTNET_EVIDENCE.md)
 - [Benchmarks](docs/BENCHMARKS.md)
 - [Error codes](docs/ERROR_CODES.md)
 - [Technical reference](docs/REFERENCE.md)
