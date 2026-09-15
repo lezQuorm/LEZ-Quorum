@@ -12,38 +12,29 @@
 | Gate ELF SHA-256 | `72351623f9a703c40736ab5645b047d39b3c5b688f2c2c47302cf62d1762fd3b` |
 | Threshold ELF SHA-256 | `7533ba0608cf00b1eb8b8b57d259d3594ff1d886acc33e9696ae57726ee951df` |
 
-## Accounts
+## Verified Demo Lifecycle
 
-| Account | ID |
-|---|---|
-| Multisig | `Public/Dhmdgo7ggkAyGgR6nnWJGKsVt4KyTSTeJVNJWP2LXwbK` |
-| Token definition | `Public/4zDx88PpQodhCCozBHzjqDWmZETUw41GXTtkTPtyWRxM` |
-| Token supply | `Public/BXyX7e1abdBYR51dyqQa9gCn24RfuyayG4oHf2wkmK8e` |
-| Recipient | `Public/3KxvbW6wV6ffDUNJu2dQAU3cJ5YZtonhh7Aoh17zqHH3` |
-| Vault | `Public/6idoC223kScRDbCtP64AMYBXh89RtttdpBxuW7AjkbNX` |
-| Proposal | `Public/942Td58tiJAseykKsXGLe2HgueWBn84z7D89R1gYBEi2` |
+The current evidence is the 2-of-3 Basecamp session verified on **15 September
+2026**. Its shared gate deployment is confirmed at block **4024**. The nine
+session transactions run from initialization at block **9021** to execution
+at block **9544**, with two private approvals at blocks **9100** and **9176**.
 
-## Transactions
+The final state is approvals **2/2**, proposal **Executed**, vault **500**, and
+recipient **250** after funding **750** and transferring **250** token units.
+See [Demo Testnet Evidence](DEMO_TESTNET_EVIDENCE.md) for all ten transaction
+hashes, account IDs, block links, timestamps, receipt checks, and video mapping.
 
-| Operation | Transaction | Block |
-|---|---|---:|
-| Deploy gate | [`4635b013b5d3c1b2b4f3d50af938808be839727a90bd293de2ba799b83c24b43`](https://explorer.testnet.lez.logos.co/transaction/4635b013b5d3c1b2b4f3d50af938808be839727a90bd293de2ba799b83c24b43) | [`693`](https://explorer.testnet.lez.logos.co/block/693) |
-| Initialize constitution | [`81f9bd58913d5cb160d221810362fcb220dd5672c8ac51b0f71fc96ffaeeb73f`](https://explorer.testnet.lez.logos.co/transaction/81f9bd58913d5cb160d221810362fcb220dd5672c8ac51b0f71fc96ffaeeb73f) | [`2359`](https://explorer.testnet.lez.logos.co/block/2359) |
-| Create token | [`2b6b7487aabe20f078991904243771f6cd19410e4a83ae0600a99504944f0962`](https://explorer.testnet.lez.logos.co/transaction/2b6b7487aabe20f078991904243771f6cd19410e4a83ae0600a99504944f0962) | [`2361`](https://explorer.testnet.lez.logos.co/block/2361) |
-| Initialize recipient | [`26822f43243542613417307ccdfb5630c3e4923be4cd1fb995ecd6e2cfca6d51`](https://explorer.testnet.lez.logos.co/transaction/26822f43243542613417307ccdfb5630c3e4923be4cd1fb995ecd6e2cfca6d51) | [`2363`](https://explorer.testnet.lez.logos.co/block/2363) |
-| Initialize vault | [`cc542de2db8394b6adb500de74d53963610872836daa6df58cd181a4f6f019a3`](https://explorer.testnet.lez.logos.co/transaction/cc542de2db8394b6adb500de74d53963610872836daa6df58cd181a4f6f019a3) | [`2364`](https://explorer.testnet.lez.logos.co/block/2364) |
-| Fund vault | [`e39c83c3f5ccb66eda322881bddb4a0c308c02f234131bde9fc9b089c73f22ee`](https://explorer.testnet.lez.logos.co/transaction/e39c83c3f5ccb66eda322881bddb4a0c308c02f234131bde9fc9b089c73f22ee) | [`2365`](https://explorer.testnet.lez.logos.co/block/2365) |
-| Propose transfer | [`1aabb2115e8d673412a10f4db476cc59aa6d3fe8b1017481035d6734a066dbd8`](https://explorer.testnet.lez.logos.co/transaction/1aabb2115e8d673412a10f4db476cc59aa6d3fe8b1017481035d6734a066dbd8) | [`2366`](https://explorer.testnet.lez.logos.co/block/2366) |
-| Private approval 1 | [`203e7d9ddcf16f9206f0cabdede6255af1d06749aa7f8f02ce0c1896a37c8fd5`](https://explorer.testnet.lez.logos.co/transaction/203e7d9ddcf16f9206f0cabdede6255af1d06749aa7f8f02ce0c1896a37c8fd5) | [`2456`](https://explorer.testnet.lez.logos.co/block/2456) |
-| Private approval 2 | [`40c9ce28b6bea114d84a7fd4642f564a80c8df12f1cd733d073138359c00e548`](https://explorer.testnet.lez.logos.co/transaction/40c9ce28b6bea114d84a7fd4642f564a80c8df12f1cd733d073138359c00e548) | [`2545`](https://explorer.testnet.lez.logos.co/block/2545) |
-| Execute transfer | [`21dcc74c864b0678e2b4259c56908352c6917d2359204e3215247bc177b6c7e9`](https://explorer.testnet.lez.logos.co/transaction/21dcc74c864b0678e2b4259c56908352c6917d2359204e3215247bc177b6c7e9) | [`2547`](https://explorer.testnet.lez.logos.co/block/2547) |
+- [Basecamp demo](https://www.youtube.com/watch?v=m65kwds8LOc): setup, treasury writes, and the start of approval proving.
+- [CLI verification demo](https://www.youtube.com/watch?v=zBWPmJSlVj8): checking the completed session's transactions and final state.
 
-| Final state | Value |
-|---|---:|
-| Approvals | `2 / 2` |
-| Vault balance | `500` |
-| Recipient balance | `250` |
-| Proposal status | `Executed` |
+## Historical Evidence
+
+An [earlier deployment snapshot](https://github.com/lezQuorm/LEZ-Quorum/blob/34c280eef551619b7cf63da6ff154f40a4eab1a5/docs/DEPLOYMENT.md)
+preserves the previous treasury accounts and lifecycle at blocks 2359–2547.
+That snapshot listed the shared deployment hash at block 693; the later
+verification and current demo place it at block 4024. Use the current demo
+evidence for this submission. The historical numbers are retained in that
+versioned record and must not be mixed with the demo session.
 
 ## Build
 
@@ -109,7 +100,7 @@ ID, artifact hashes, transaction, and lifecycle evidence.
 ## Local Sequencer
 
 ```bash
-LEZ_REPO=../../logos-execution-zone-v022 ./scripts/sequencer-e2e.sh
+LEZ_REPO=../logos-execution-zone-v022 ./scripts/sequencer-e2e.sh
 ```
 
 For a faster development run:
@@ -133,6 +124,7 @@ git clone --branch v0.2.2 --depth 1 \
   logos-execution-zone-v022
 git clone https://github.com/lezQuorm/LEZ-Quorum.git
 cd LEZ-Quorum
+git checkout --detach 456ece6524ca1b651ff9fd3ed31f416b7038df61
 
 cargo fmt --all -- --check
 RISC0_DEV_MODE=1 cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -145,8 +137,10 @@ rehearsal, prefix it with `RISC0_DEV_MODE=1`.
 
 ## CI Evidence
 
-[CI run 31474959072](https://github.com/lezQuorm/LEZ-Quorum/actions/runs/31474959072)
-passed formatting, strict Clippy, workspace tests, the pinned standalone
+[CI run 34942595687](https://github.com/lezQuorm/LEZ-Quorum/actions/runs/34942595687)
+passed on published commit
+[`456ece6524ca1b651ff9fd3ed31f416b7038df61`](https://github.com/lezQuorm/LEZ-Quorum/commit/456ece6524ca1b651ff9fd3ed31f416b7038df61).
+Its jobs cover formatting, strict Clippy, workspace tests, the pinned standalone
 sequencer lifecycle, and a real 2-of-3 threshold proof. The standalone CI job
 uses development receipts for runtime; the separate real-proof job supplies
 the cryptographic evidence. These modes are labeled independently so a fast

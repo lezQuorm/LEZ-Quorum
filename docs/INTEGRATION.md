@@ -26,25 +26,26 @@ the complete option set.
 ## Local State Workflow
 
 The filesystem-backed CLI is the shortest way to integrate the SDK concepts
-without a sequencer:
+without a sequencer. Start at the repository root after building the CLI:
 
 ```bash
-mkdir /tmp/quorum-example
-cd /tmp/quorum-example
+Q="$(realpath target/release/quorum)"
+QUORUM_LOCAL_SESSION="$(mktemp -d "${TMPDIR:-/tmp}/quorum-local.XXXXXX")"
+cd "$QUORUM_LOCAL_SESSION" || exit 1
 
-/path/to/LEZ-Quorum/target/release/quorum create \
+"$Q" create \
   --threshold 2 --members 3 \
   --tiers '[{"id":1,"threshold":2,"max_amount":1000}]'
 
-/path/to/LEZ-Quorum/target/release/quorum propose \
+"$Q" propose \
   --action transfer \
   --recipient 0909090909090909090909090909090909090909090909090909090909090909 \
   --amount 500 --tier 1
 
-RISC0_DEV_MODE=1 /path/to/LEZ-Quorum/target/release/quorum \
+RISC0_DEV_MODE=1 "$Q" \
   approve-all --proposal 0 --members 0,1
-/path/to/LEZ-Quorum/target/release/quorum execute --proposal 0
-/path/to/LEZ-Quorum/target/release/quorum info
+"$Q" execute --proposal 0
+"$Q" info
 ```
 
 `create` writes `quorum.json` plus one private `member-<index>.json` file per
@@ -52,7 +53,8 @@ member. `approve` proves one member; `approve-all` aggregates a comma-separated
 set into one receipt. Use `RISC0_DEV_MODE=0` or leave it unset for a real
 receipt.
 
-The maintained script also tests rotation and rejects a removed member:
+From the repository root, the maintained script also tests rotation and
+rejects a removed member:
 
 ```bash
 RISC0_DEV_MODE=1 ./scripts/demo.sh
@@ -91,14 +93,19 @@ the threshold guest, gate, and LEZ privacy transaction.
 
 ## Network CLI
 
-Choose `local` for a developer sequencer or `testnet` for the public endpoint:
+Choose `local` for a running developer sequencer or `testnet` for the public
+endpoint. Start the following example from the repository root; the absolute
+CLI path remains valid after changing to a private session directory:
 
 ```bash
-Q=target/release/quorum
-$Q network --target local health
-$Q network --target local deployment
-$Q network --target local prepare --threshold 2 --members 3 \
+Q="$(realpath target/release/quorum)"
+QUORUM_NETWORK_SESSION="$(mktemp -d "${TMPDIR:-/tmp}/quorum-network.XXXXXX")"
+cd "$QUORUM_NETWORK_SESSION" || exit 1
+"$Q" network --target local health
+"$Q" network --target local prepare --threshold 2 --members 3 \
   --funding 750 --transfer 250
+"$Q" network --target local deploy
+"$Q" network --target local deploy --confirm-public-write
 ```
 
 The state directory is `.quorum-network-local/` for local and
@@ -108,25 +115,25 @@ a new private working directory for every independent lifecycle.
 Run writes in order:
 
 ```bash
-$Q network --target local initialize
-$Q network --target local initialize --confirm-public-write
-$Q network --target local create-token
-$Q network --target local create-token --confirm-public-write
-$Q network --target local initialize-recipient
-$Q network --target local initialize-recipient --confirm-public-write
-$Q network --target local initialize-vault
-$Q network --target local initialize-vault --confirm-public-write
-$Q network --target local fund
-$Q network --target local fund --confirm-public-write
-$Q network --target local propose
-$Q network --target local propose --confirm-public-write
-$Q network --target local approve-threshold
-$Q network --target local approve-threshold --confirm-public-write
-$Q network --target local approve-threshold
-$Q network --target local approve-threshold --confirm-public-write
-$Q network --target local execute --proposal 0
-$Q network --target local execute --proposal 0 --confirm-public-write
-$Q network --target local status
+"$Q" network --target local initialize
+"$Q" network --target local initialize --confirm-public-write
+"$Q" network --target local create-token
+"$Q" network --target local create-token --confirm-public-write
+"$Q" network --target local initialize-recipient
+"$Q" network --target local initialize-recipient --confirm-public-write
+"$Q" network --target local initialize-vault
+"$Q" network --target local initialize-vault --confirm-public-write
+"$Q" network --target local fund
+"$Q" network --target local fund --confirm-public-write
+"$Q" network --target local propose
+"$Q" network --target local propose --confirm-public-write
+"$Q" network --target local approve-threshold
+"$Q" network --target local approve-threshold --confirm-public-write
+"$Q" network --target local approve-threshold
+"$Q" network --target local approve-threshold --confirm-public-write
+"$Q" network --target local execute --proposal 0
+"$Q" network --target local execute --proposal 0 --confirm-public-write
+"$Q" network --target local status
 ```
 
 The first invocation of each write saves the exact transaction and prints its
@@ -136,32 +143,40 @@ configuration between preview and confirmation.
 After a timeout or interruption:
 
 ```bash
-$Q network --target local status
-$Q network --target local reconcile
+"$Q" network --target local status
+"$Q" network --target local reconcile
 ```
 
 Only after a not-found result and manual review may the exact saved bytes be
 resubmitted:
 
 ```bash
-$Q network --target local reconcile \
+"$Q" network --target local reconcile \
   --resubmit-unconfirmed --confirm-public-write
 ```
 
 ## Testnet
 
-Use the same commands with `--target testnet`. Testnet mode requires
-`RISC0_DEV_MODE=0` or an unset variable. Before any write, compare the health
-and deployment output with [Deployment](DEPLOYMENT.md):
+Use the lifecycle commands with `--target testnet` for the public endpoint.
+Testnet mode requires `RISC0_DEV_MODE=0` or an unset variable. After preparing
+a new session, use `deployment` to verify and reuse the published gate instead
+of the local example's `deploy` steps. Before any write, compare health and
+deployment output with [Deployment](DEPLOYMENT.md):
 
 ```bash
-env -u RISC0_DEV_MODE $Q network --target testnet health
-env -u RISC0_DEV_MODE $Q network --target testnet deployment
-env -u RISC0_DEV_MODE $Q network --target testnet status
+env -u RISC0_DEV_MODE "$Q" network --target testnet health
+env -u RISC0_DEV_MODE "$Q" network --target testnet deployment
+env -u RISC0_DEV_MODE "$Q" network --target testnet status
 ```
 
-Do not reuse the published demonstration's member material. `prepare` must
-generate a new isolated session. Testnet is public and may reset or upgrade.
+For a new lifecycle, generate isolated member material with `prepare`; never
+reuse the published demonstration's credentials. To resume or inspect an
+existing lifecycle, return to its session directory and run `status` or
+`reconcile`. These commands query testnet and refresh local state without
+submitting transactions unless reconciliation is explicitly given both
+resubmission flags. Setting `RISC0_DEV_MODE=0` for a status check does not run a
+proof. The [CLI verification demo](https://www.youtube.com/watch?v=zBWPmJSlVj8)
+shows this completed-session check. Testnet may reset or upgrade.
 
 ## LEZ Account Compatibility
 
@@ -224,26 +239,9 @@ git diff --exit-code -- programs/quorum-gate/idl/quorum_gate.idl.json
 
 ## Basecamp
 
-For a step-by-step walkthrough of building the CLI, running the module, and
-completing both the local and testnet flows, see [Running Quorum in
-Basecamp](BASECAMP_GUIDE.md). The build commands are summarized below.
-
-Build all outputs from the locked flake:
-
-```bash
-cargo build --release -p quorum-cli
-cd apps/basecamp-quorum
-nix --extra-experimental-features 'nix-command flakes' build .#generate
-nix --extra-experimental-features 'nix-command flakes' build .#lib
-nix --extra-experimental-features 'nix-command flakes' build .#lgx
-nix --extra-experimental-features 'nix-command flakes' build .#lgx-portable
-```
-
-Run the development module with:
-
-```bash
-nix --extra-experimental-features 'nix-command flakes' run .
-```
+Use [Running Quorum In Basecamp](BASECAMP_GUIDE.md) for the GUI lifecycle and
+[Basecamp Release](BASECAMP_RELEASE.md) for public downloads, checksums, native
+and portable packaging, and the locked build commands.
 
 The module manifest is `apps/basecamp-quorum/metadata.json`, passed as
 `configFile` to `mkLogosQmlModule`. This is the manifest expected by the pinned
@@ -251,14 +249,15 @@ official builder. The UI resolves a `quorum` executable or accepts an explicit
 binary path, creates a private working directory, and always sets
 `RISC0_DEV_MODE=0` for child commands.
 
-In the app, select `Local` or `LEZ Testnet`, configure the release CLI, prepare
-a fresh session, then follow Setup, Treasury, Proposals, Approvals, and Activity.
+In the app, select `Local` or `LEZ Testnet` and configure the release CLI. For
+a fresh testnet lifecycle, follow Setup, Treasury, Approve, Execute, and State.
 The public-write checkbox is deliberately reset between submissions. Proof
 operations expose live phase and elapsed-time output and may be cancelled.
 
-Portable and native `.lgx` results are release artifacts. Build them from the
-same commit, calculate SHA-256 checksums, attach both files and the checksum
-manifest to a release, then link those downloadable assets from the submission.
+Native and portable LGX packages and the matching CLI are published in
+[release v0.1.1](https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1).
+Verify their checksums before loading them; the release manifest records the
+source revision and download/load validation.
 
 ## Secret Material
 

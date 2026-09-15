@@ -48,8 +48,9 @@ production treasury.
 
 ## Operations
 
-- The Basecamp module launches `target/release/quorum` as a child process. The
-  repository CLI must exist at the expected relative path.
+- The Basecamp module launches a separately installed Quorum CLI. Select the
+  downloaded binary or a local build by absolute path in Runtime settings.
+  A saved CLI path takes precedence over a `quorum` executable on `PATH`.
 - Basecamp packages are published for Linux amd64 in release `v0.1.1`. Other
   platforms still require a local build, and the module requires the matching
   `quorum` CLI binary alongside the LGX package.
@@ -83,9 +84,12 @@ production treasury.
 - Development-mode test receipts do not provide cryptographic security.
 - Compute-unit measurements are local guest `user_cycles`, not a testnet fee,
   gas price, or end-to-end latency guarantee.
-- The older repository video predates the final implementation and was rejected
-  for audio and coverage. It must not be used as the final submission demo.
+- The final [Basecamp recording](https://www.youtube.com/watch?v=m65kwds8LOc)
+  ends during the first approval proof. The companion
+  [CLI recording](https://www.youtube.com/watch?v=zBWPmJSlVj8) checks the completed
+  session. The full transaction and receipt verification is documented in
+  [Demo Testnet Evidence](DEMO_TESTNET_EVIDENCE.md).
 
-The remaining external release tasks are tracked in
+The supplied artifacts and their coverage are indexed in
 [Success-Criteria Evidence](CRITERIA.md). Technical integration instructions
 are in [Integration](INTEGRATION.md).

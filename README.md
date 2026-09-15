@@ -16,14 +16,18 @@ The deployed design combines two proofs:
 The SPEL gate binds both layers, records distinct nullifiers, and executes the
 approved action when the proposal threshold is met.
 
-## Demo
+## Demos
 
-Watch the [LEZ-Quorum Basecamp demo](https://www.youtube.com/watch?v=m65kwds8LOc).
+- [Basecamp demo](https://www.youtube.com/watch?v=m65kwds8LOc): setup, treasury
+  transactions, and the start of real approval proof generation.
+- [CLI verification demo](https://www.youtube.com/watch?v=zBWPmJSlVj8): checking
+  the completed session's confirmed transactions, approvals, and final balances
+  with `quorum network --target testnet status`.
 
-The recording shows setup, treasury transactions, and the start of real approval
-proof generation. Both approval confirmations and execution occurred after the
-recording ended; the [verified demo testnet evidence](docs/DEMO_TESTNET_EVIDENCE.md)
-documents the completed flow for the same session.
+Both approval confirmations and execution occurred after the Basecamp recording
+ended. The CLI walkthrough checks the completed state, and the
+[verified demo testnet evidence](docs/DEMO_TESTNET_EVIDENCE.md) documents the
+transaction flow for the same session.
 
 ## Testnet Result
 
@@ -123,14 +127,20 @@ health -> deployment -> prepare -> initialize -> create-token
        -> approve-threshold -> approve-threshold -> execute -> reconcile
 ```
 
-For example:
+For a fresh session against a running local sequencer, start at the repository
+root and deploy the gate before initializing:
 
 ```bash
-target/release/quorum network --target local health
-target/release/quorum network --target local prepare
-target/release/quorum network --target local initialize
-target/release/quorum network --target local initialize --confirm-public-write
-target/release/quorum network --target local status
+Q="$(realpath target/release/quorum)"
+QUORUM_SESSION="$(mktemp -d "${TMPDIR:-/tmp}/quorum-network.XXXXXX")"
+cd "$QUORUM_SESSION" || exit 1
+"$Q" network --target local health
+"$Q" network --target local prepare
+"$Q" network --target local deploy
+"$Q" network --target local deploy --confirm-public-write
+"$Q" network --target local initialize
+"$Q" network --target local initialize --confirm-public-write
+"$Q" network --target local status
 ```
 
 Use `--target testnet` only with real proofs and after reviewing the exact
@@ -142,24 +152,14 @@ must not be committed or shared. The complete command guide is in
 ## Basecamp Module
 
 The QML module invokes the same release CLI and supports `Local` and
-`LEZ Testnet` targets. Build the CLI before launching the module:
-
-```bash
-cargo build --release -p quorum-cli
-cd apps/basecamp-quorum
-nix --extra-experimental-features 'nix-command flakes' build .#generate
-nix --extra-experimental-features 'nix-command flakes' build .#lib
-nix --extra-experimental-features 'nix-command flakes' build .#lgx
-nix --extra-experimental-features 'nix-command flakes' build .#lgx-portable
-nix --extra-experimental-features 'nix-command flakes' run .
-```
-
-`metadata.json` is the module manifest consumed by the pinned
-`logos-module-builder`. There is no separate `module.json` in that builder
-contract. See [Basecamp integration](docs/INTEGRATION.md#basecamp).
-
-Download the validated Linux amd64 module packages and matching CLI from the
+`LEZ Testnet` targets. Download the Linux amd64 LGX packages and matching CLI from the
 [Quorum v0.1.1 release](https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1).
+Follow [Download And Load](docs/BASECAMP_RELEASE.md#download-and-load) to verify
+the checksums, import the portable LGX, and select the CLI in Runtime settings.
+
+For source builds and the complete GUI lifecycle, use the
+[Basecamp Guide](docs/BASECAMP_GUIDE.md). The LGX contains the QML module; the
+CLI is installed separately. Real approvals require the Risc0 prover runtime.
 
 ## Workspace
 

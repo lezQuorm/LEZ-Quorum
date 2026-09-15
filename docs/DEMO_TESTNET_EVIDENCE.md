@@ -6,7 +6,11 @@ Verification on **15 September 2026** found **no transaction hash, confirmation 
 
 [Watch the Basecamp demo](https://www.youtube.com/watch?v=m65kwds8LOc).
 
-The 13-minute-57-second video shows setup, treasury transactions, and the start of the first real approval proof. Both approval confirmations and execution happened **after recording ended**. This document supplies the verified completion evidence for the same session; it does not claim those later confirmations appear in the video.
+The 13-minute-57-second Basecamp video shows setup, treasury transactions, and the start of the first real approval proof. Both approval confirmations and execution happened **after recording ended**. This document supplies the verified completion evidence for the same session; it does not claim those later confirmations appear in the Basecamp video.
+
+[Watch the companion CLI verification demo](https://www.youtube.com/watch?v=zBWPmJSlVj8). This walkthrough uses `quorum network --target testnet status` to check the completed session's confirmed transactions, approvals, and final balances. It is a status check of existing transactions, with no new proof generation or transaction submission.
+
+These are the final demonstration recordings selected by the author, who confirmed that the audio is clear in both. The later CLI status output reports block **9784**, the same ten confirmed transaction hashes and inclusion blocks, and the same final balances. This later status check supplements the transaction and receipt verification recorded below; it does not change the original verification timestamp.
 
 ## Session and verification context
 
@@ -56,7 +60,7 @@ The multisig account stores the constitution. The proposal account stores the ac
 
 ## Confirmed transactions
 
-Every transaction below passed hash recomputation, recorded-block inclusion, and comparison with the saved transaction bytes in the session shown in the video. At verification, the sequencer reported `bedrock_status=Finalized` for all ten inclusion blocks.
+Every transaction below passed hash recomputation, recorded-block inclusion, and comparison with the saved transaction bytes in the session shown in the Basecamp video. At verification, the sequencer reported `bedrock_status=Finalized` for all ten inclusion blocks.
 
 Times below are **block timestamps in UTC**, not proof-generation duration. Nairobi time is UTC+03:00.
 
@@ -101,7 +105,7 @@ For that verification, the expected public pre-state was reconstructed from the 
 
 These are public proposal nullifiers, not member secrets. The suffixes in `approve-0-0` and `approve-0-1` are local member-slot labels. Verification establishes distinct credential approvals; it does not identify the members or establish that separate people operated them.
 
-## Matching the published video
+## Matching the Basecamp video
 
 The following timestamps are inspected frames where the relevant output is visible, rather than exact button-click times. The visible hashes and blocks match the transaction table above.
 
@@ -116,16 +120,16 @@ The following timestamps are inspected frames where the relevant output is visib
 | [12:15](https://www.youtube.com/watch?v=m65kwds8LOc&t=735s) | Proposal hash `11878ff3…`, confirmed in block 9027; proposal ID 0 selected. |
 | [13:55](https://www.youtube.com/watch?v=m65kwds8LOc&t=835s) | “Real proof active”; stage 1 of 3; proving approval for member 0. Proof generation is still running at the end. |
 
-All ten network transactions match the saved public transaction journal of session `lez-quorum-testnet-20260914-230942769`, which is visible during the treasury and approval steps. This ties the later confirmations to the session used in the recording.
+All ten network transactions match the saved public transaction journal of session `lez-quorum-testnet-20260914-230942769`, which is visible during the treasury and approval steps. This ties the later confirmations to the session used in the Basecamp recording.
 
 ## Clarifications and discrepancies found
 
 - **No recorded transaction hash or block mismatch was found.** Repeated label/hash pairs are repeated output for the same transaction, not additional transactions.
 - **The vault preview was not a failed transaction.** The `submission=blocked` entry and later confirmation contain the same hash, `d811b1f2…`; that transaction subsequently confirmed in block 9025.
-- **The video does not contain the final confirmations.** Both approvals and execution are later completion evidence. Their network block timestamps establish this distinction.
-- **The video displays an incorrect `0 / 0 confirmed approvals` before the first proof.** The label reads numeric fields from the latest activity output, and missing fields become zero. The proposal-submission output has no approval counts. The recorded initialization and live constitution require 2 approvals; receipt-verified proposal states progress from 1/2 to 2/2. This is a display issue, not a zero-threshold onchain configuration. See [the approval display implementation](../apps/basecamp-quorum/src/qml/QuorumView.qml).
+- **The Basecamp video does not contain the final confirmations.** Both approvals and execution are later completion evidence. Their network block timestamps establish this distinction; the companion CLI demo checks the completed state afterward.
+- **The Basecamp video displays an incorrect `0 / 0 confirmed approvals` before the first proof.** The label reads numeric fields from the latest activity output, and missing fields become zero. The proposal-submission output has no approval counts. The recorded initialization and live constitution require 2 approvals; receipt-verified proposal states progress from 1/2 to 2/2. This is a display issue, not a zero-threshold onchain configuration. See [the approval display implementation](../apps/basecamp-quorum/src/qml/QuorumView.qml).
 - **An earlier session directory is visible during deployment verification at 04:00.** The treasury transaction sequence subsequently uses the session named above. The shared deployment is reusable, and the later session journal matches all ten network transactions.
-- **The existing [deployment document](DEPLOYMENT.md) describes a different historical run.** Its treasury accounts and transaction hashes are not this demo's records. It also lists the shared deployment hash at block 693, whereas the current network and this recording place it at block 4024. This document records the verified blocks for this demo without treating the older table as interchangeable evidence.
+- **The [earlier deployment snapshot](https://github.com/lezQuorm/LEZ-Quorum/blob/34c280eef551619b7cf63da6ff154f40a4eab1a5/docs/DEPLOYMENT.md) describes a different historical run.** Its treasury accounts and transaction hashes are not this demo's records. It lists the shared deployment hash at block 693, whereas this verification and the Basecamp recording place it at block 4024. The current [deployment guide](DEPLOYMENT.md) links this demo as the current evidence and retains a reference to that historical snapshot.
 - **2/2 approvals is a satisfied threshold in a 2-of-3 configuration.** It does not mean the treasury has only two members.
 
 ## Final state and token accounting
@@ -164,9 +168,9 @@ The execution output's `RESULT=PASS` is consistent with these independent checks
 1. Compared the supplied transcript with the local record, checked every repeated transaction hash, and deduplicated the ten final journal entries.
 2. Queried `getTransaction` for each hash and `getBlock` for each recorded inclusion block using the public testnet RPC.
 3. Decoded the returned transactions and blocks with the pinned LEZ types, recomputed every transaction hash and block hash, and confirmed exact transaction-byte equality and a single occurrence in its recorded block.
-4. Ran LEZ stateless transaction checks, including applicable signature checks. Compared every returned transaction with the public transaction journal from the video session.
+4. Ran LEZ stateless transaction checks, including applicable signature checks. Compared every returned transaction with the public transaction journal from the Basecamp video session.
 5. Decoded public instructions and private approval post-states; checked shared account IDs, program IDs, token identity, amounts, proposal ID, constitution version, thresholds, member root, and nullifier continuity.
 6. Verified both final real privacy receipts against the pinned circuit and their reconstructed expected outputs. No new proofs were generated and no transactions were submitted.
-7. Queried network identity, health, built-in program IDs, and the six live accounts; verified final token accounting and matched visible transaction output against frames from the published video.
+7. Queried network identity, health, built-in program IDs, and the six live accounts; verified final token accounting and matched visible transaction output against frames from the published Basecamp video.
 
 `Finalized` above is the status supplied by the sequencer for those blocks. This review checked their contents and hashes; it did not independently replay Bedrock consensus or the full LEZ chain. The evidence establishes this completed testnet treasury flow, rather than a general security audit or coverage of every governance feature.

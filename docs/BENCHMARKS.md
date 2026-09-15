@@ -6,7 +6,8 @@ program execution inside LEZ and is not a token fee or wall-clock latency.
 
 ## Client Proof
 
-A real 2-of-3 threshold proof using `RISC0_DEV_MODE=0` was recorded in CI:
+A real 2-of-3 threshold proof using `RISC0_DEV_MODE=0` was recorded in
+[CI run 31474959072](https://github.com/lezQuorm/LEZ-Quorum/actions/runs/31474959072/job/93727075756):
 
 | Metric | Result |
 |---|---:|
@@ -101,12 +102,40 @@ command above measures cryptographic proof generation.
 
 ## Gas And Fee Boundary
 
-LEZ v0.2.2 exposes the guest execution meter as `user_cycles`. The pinned
-testnet RPC and explorer do not expose a stable per-operation gas or token-fee
-field that can be reproduced from this repository. The table above therefore
-reports the available consensus-relevant compute metric and does not present
-`user_cycles` as a gas price or fee. Operators must confirm the active network
-transaction budget and fee policy at deployment time.
+For this table, **one reported CU means one Risc0 guest user cycle**. The
+[benchmark implementation](../crates/quorum-composer/examples/compute_units.rs)
+calls `SessionInfo::cycles()`. In the pinned
+[Risc0 3.0.5 source](https://github.com/risc0/risc0/blob/v3.0.5/risc0/zkvm/src/host/api/mod.rs#L387),
+that method sums user cycles across segments, excluding continuation overhead
+and power-of-two padding. This is the table's measurement convention, not a
+published conversion from guest cycles to a charged LEZ gas unit.
+
+The pinned LEZ implementation explains why a token-denominated gas benchmark
+is unavailable:
+
+- [Public program execution](https://github.com/logos-blockchain/logos-execution-zone/blob/d6e4ae694e7419f5906b340c232704466a1917b7/lee/state_machine/src/program/mod.rs#L13)
+  sets a fixed session limit of `32 * 1024 * 1024` cycles and identifies variable
+  limits as future fee work. This limit is not the benchmark's user-cycle
+  count, and should not be treated as a gas-price formula.
+- [The sequencer RPC contract](https://github.com/logos-blockchain/logos-execution-zone/blob/d6e4ae694e7419f5906b340c232704466a1917b7/lez/sequencer/service/rpc/src/lib.rs#L72)
+  returns a transaction and inclusion block from `getTransaction`; it exposes
+  no per-transaction gas-used, gas-price, or fee-paid result.
+- [Wallet configuration](https://github.com/logos-blockchain/logos-execution-zone/blob/d6e4ae694e7419f5906b340c232704466a1917b7/lez/wallet/src/config.rs#L23)
+  defines a `GasConfig` type, but that type is not a field of `WalletConfig`
+  and its gas-price fields are not consumed elsewhere in the pinned Rust
+  implementation. Those declarations are not measured transaction charges.
+
+| Requested quantity | Available evidence |
+|---|---|
+| Guest operation compute | The reproducible user-cycle table above; chained token calls are summed where shown |
+| Client proof generation | Real threshold and composed gate/privacy timings above |
+| On-chain cryptographic verification gas or fee | Not available from the pinned implementation/RPC; no numeric gas cost is claimed |
+
+The approval row counts the gate guest's work, including its receipt-assumption
+check. It does not measure the sequencer's cryptographic verification of the
+final LEZ privacy receipt, nor the cost of generating that receipt. Token
+balances and block timestamps cannot supply the missing verifier gas metric.
+An unavailable fee measurement is reported as unavailable, rather than zero.
 
 The CI evidence, local real-proof lifecycle, and testnet transactions are linked from
 [Deployment](DEPLOYMENT.md).

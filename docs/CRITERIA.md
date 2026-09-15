@@ -1,8 +1,9 @@
 # LP-0002 Success-Criteria Evidence
 
-This matrix mirrors the official LP-0002 criteria. A checked item has source,
-test, CI, or testnet evidence in the repository. Unchecked items require an
-external publication step and must be completed before the final submission.
+This matrix maps the [LP-0002 criteria](https://github.com/logos-co/lambda-prize/blob/master/prizes/LP-0002.md)
+to source, tests, CI, release artifacts, and testnet evidence. Checked rows have
+the stated supporting evidence. The sections below describe the final video
+coverage and the metrics available from the pinned LEZ implementation.
 
 ## Functionality
 
@@ -13,7 +14,7 @@ external publication step and must be completed before the final submission.
 | [x] | Prevent double approval | Proposal/version-scoped nullifier plus circuit and gate duplicate checks |
 | [x] | Execution unlinkable to an individual shielded account | Scoped credential commitments and outer private LEZ transaction; see `PRIVACY_MODEL.md` for metadata limits |
 | [x] | Client-side proof generation | `quorum-prover`, CLI approve commands, real-proof CI job |
-| [x] | Threshold-gated LEZ testnet action | 2-of-3 transfer at blocks 2359-2547 in `DEPLOYMENT.md` |
+| [x] | Threshold-gated LEZ testnet action | 2-of-3 session initialized at 9021, approved at 9100 and 9176, and executed at 9544; [verified transactions](DEMO_TESTNET_EVIDENCE.md) |
 | [x] | Reproducible testnet instance and evidence | Exact commits, program/artifact hashes, commands, accounts, transactions, and final state |
 | [x] | Full documentation and clean public repository | README and focused documents listed below; format, Clippy, tests, and secret ignores |
 
@@ -22,7 +23,7 @@ external publication step and must be completed before the final submission.
 | Status | Criterion | Evidence |
 |---|---|---|
 | [x] | Module/SDK | `quorum-sdk`, `quorum-composer`, `quorum-cli`, and integration guide |
-| [x] | Basecamp GUI, local build, downloadable assets, loadable in Basecamp | Locked native/portable builds and checksums pass; release [`v0.1.1`](https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1) was downloaded into a clean directory and its CLI and portable manifest validated |
+| [x] | Basecamp GUI, local build, downloadable assets, loadable in Basecamp | Native/portable LGX and matching CLI are downloadable in [v0.1.1](https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1); checksums and host-load verification are described in [Basecamp Release](BASECAMP_RELEASE.md) |
 | [x] | SPEL IDL | `programs/quorum-gate/idl/quorum_gate.idl.json` plus consistency test |
 
 ## Reliability
@@ -37,44 +38,63 @@ external publication step and must be completed before the final submission.
 
 | Status | Criterion | Evidence |
 |---|---|---|
-| [x] | CU cost for each on-chain operation | Reproducible `user_cycles` table in `BENCHMARKS.md`, including transfer and governance paths; the gas/fee boundary is stated explicitly there |
+| [x] | CU cost for each on-chain operation | Reproducible guest `user_cycles` table, including chained calls and governance, with exact Risc0 measurement semantics in [Benchmarks](BENCHMARKS.md) |
+
+Gas/fee measurements are unavailable from the pinned LEZ RPC. The
+[source-backed explanation](BENCHMARKS.md#gas-and-fee-boundary) distinguishes
+measured guest execution from cryptographic verification gas and token fees.
+No numeric verifier gas cost is claimed.
 
 ## Supportability
 
 | Status | Criterion | Evidence |
 |---|---|---|
-| [x] | Deployed and tested on LEZ testnet | Gate deployment and full lifecycle transaction links in `DEPLOYMENT.md` |
+| [x] | Deployed and tested on LEZ testnet | Gate deployment at block 4024 and completed demo lifecycle in [Demo Testnet Evidence](DEMO_TESTNET_EVIDENCE.md) |
 | [x] | Standalone sequencer E2E in CI | `scripts/sequencer-e2e.sh` and the `sequencer-e2e` CI job |
-| [x] | Green default-branch CI | Linked run in `DEPLOYMENT.md` includes checks, sequencer E2E, and real proof |
+| [x] | Green default-branch CI | [Run 34942595687](https://github.com/lezQuorm/LEZ-Quorum/actions/runs/34942595687) passed for published commit `456ece6524ca1b651ff9fd3ed31f416b7038df61` |
 | [x] | README with deployment, addresses, CLI, and Basecamp use | README plus `INTEGRATION.md` and `DEPLOYMENT.md` |
 | [x] | Real local-sequencer demo script | Script defaults to `RISC0_DEV_MODE=0`, checks the pinned LEZ commit and exact PASS markers; the local 0.1.1 real run ended with both PASS markers after 5620 seconds |
-| [ ] | Narrated E2E video showing terminal proof generation and `RISC0_DEV_MODE=0` | Record using the local recording checklist, verify audio, publish, and insert the final URL |
+| Supplied; coverage below | Narrated E2E video and terminal proof output | Final [Basecamp](https://www.youtube.com/watch?v=m65kwds8LOc) and [CLI verification](https://www.youtube.com/watch?v=zBWPmJSlVj8) recordings, plus real-proof CI logs and verified completion evidence |
 
 ## Required Write-Up
 
 | Requirement | Document |
 |---|---|
-| Cryptographic and threshold proof approach | `CIRCUIT_DESIGN.md` |
-| Nullifier and anti-replay design | `CIRCUIT_DESIGN.md`, `PRIVACY_MODEL.md` |
-| Trusted setup | `SECURITY_ASSUMPTIONS.md` |
-| LEZ nonce and `program_owner` compatibility | `INTEGRATION.md` |
-| Security assumptions | `SECURITY_ASSUMPTIONS.md` |
-| Known limitations | `KNOWN_LIMITATIONS.md` |
-| Integration instructions | `INTEGRATION.md` |
-| Proof generation time and CU cost | `BENCHMARKS.md` |
+| Cryptographic and threshold proof approach | [Circuit Design](CIRCUIT_DESIGN.md) |
+| Nullifier and anti-replay design | [Circuit Design](CIRCUIT_DESIGN.md), [Privacy Model](PRIVACY_MODEL.md) |
+| Trusted setup | [Security Assumptions](SECURITY_ASSUMPTIONS.md) |
+| LEZ nonce and `program_owner` compatibility | [Integration](INTEGRATION.md#lez-account-compatibility) |
+| Security assumptions | [Security Assumptions](SECURITY_ASSUMPTIONS.md) |
+| Known limitations | [Known Limitations](KNOWN_LIMITATIONS.md) |
+| Integration instructions | [Integration](INTEGRATION.md) |
+| Proof generation time and CU cost | [Benchmarks](BENCHMARKS.md) |
 
-## Final Publication Gate
+## Final Demonstration Coverage
 
-Before opening the final solution PR:
+The author selected both published videos as final and confirmed that their
+audio is clear. The Basecamp recording shows setup, treasury submissions, and
+the start of the first real approval proof. The CLI recording shows a testnet
+status check of the same completed session: ten confirmed transactions, two
+approvals, Executed, vault 500, and recipient 250.
 
-1. build and smoke-test both Basecamp packages from the final commit;
-2. attach native and portable `.lgx` files plus `SHA256SUMS` to a public release;
-3. record one narrated demo that includes the Basecamp flow and terminal CLI
-   transactions, clearly showing `proof_mode=real` or `RISC0_DEV_MODE=0`;
-4. listen to the published recording on ordinary speakers and headphones;
-5. replace all release, commit, CI, and video placeholders in the solution;
-6. run the complete verification commands from `DEPLOYMENT.md`; and
-7. confirm the solution matrix has no unchecked boxes.
+The videos are complemented by [transaction and receipt verification](DEMO_TESTNET_EVIDENCE.md)
+and the [real-proof CI job](https://github.com/lezQuorm/LEZ-Quorum/actions/runs/34942595687/job/104295017075).
+The [official video criterion](https://github.com/logos-co/lambda-prize/blob/master/prizes/LP-0002.md#supportability)
+includes terminal proof generation. The supplied
+CLI recording checks existing state; it does not record new proof generation
+or transaction submission.
 
-Do not represent a development receipt, old video, local-only package, or
-unpublished asset as satisfying the corresponding criterion.
+## Submission References
+
+| Artifact | Reference |
+|---|---|
+| Verified public code/evidence commit | [456ece6524ca1b651ff9fd3ed31f416b7038df61](https://github.com/lezQuorm/LEZ-Quorum/commit/456ece6524ca1b651ff9fd3ed31f416b7038df61) |
+| Release and source revision | [v0.1.1](https://github.com/lezQuorm/LEZ-Quorum/releases/tag/v0.1.1), source `09e3bed69b229ecbec30e8bc24fe87ba3dac46e2` |
+| Package hashes and installation | [Basecamp Release](BASECAMP_RELEASE.md) |
+| Testnet program and reproduction | [Deployment](DEPLOYMENT.md) |
+| Current demo transactions and videos | [Demo Testnet Evidence](DEMO_TESTNET_EVIDENCE.md) |
+| Default-branch CI | [Run 34942595687](https://github.com/lezQuorm/LEZ-Quorum/actions/runs/34942595687) |
+
+The release source and later verified documentation commit are listed
+separately so reviewers can reproduce the published packages and identify the
+revision checked by CI.
